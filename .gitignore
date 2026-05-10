@@ -1,0 +1,23 @@
+# Elixir
+_build/
+deps/
+*.beam
+erl_crash.dump
+
+# Go
+pair-client/pair
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Config (API keys, etc)
+auth.json
+settings.json
+*.pem

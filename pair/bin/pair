@@ -1,0 +1,29 @@
+#!/bin/sh
+# Pair — CLI for shareable coding agent sessions
+# Install: cp bin/pair /usr/local/bin/pair && chmod +x /usr/local/bin/pair
+# Or: alias pair='mix pair'
+
+# Find the pair project root (look for mix.exs with "Pair" in it)
+find_project() {
+  dir="$PWD"
+  while [ "$dir" != "/" ]; do
+    if grep -q "Pair" "$dir/mix.exs" 2>/dev/null; then
+      echo "$dir"
+      return
+    fi
+    dir=$(dirname "$dir")
+  done
+  # Fallback: check standard location
+  for d in "$HOME/dev/everywhere/pair" "/usr/local/lib/pair" "$HOME/pair"; do
+    if [ -f "$d/mix.exs" ]; then echo "$d"; return; fi
+  done
+  echo ""
+}
+
+ROOT=$(find_project)
+if [ -z "$ROOT" ]; then
+  echo "pair: could not find project. cd into the pair directory first."
+  exit 1
+fi
+
+cd "$ROOT" && exec mix pair "$@"

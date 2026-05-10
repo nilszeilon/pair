@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>pair</title>
+<script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-fit@0.8.0/lib/xterm-addon-fit.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xterm-addon-web-links@0.9.0/lib/xterm-addon-web-links.min.js"></script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.css" />
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; overflow: hidden; background: #1a1a1a; }
+  #terminal { height: 100%; padding: 4px; }
+</style>
+</head>
+<body>
+<div id="terminal"></div>
+<script>
+function fontSizeForWidth(w) {
+  // 14px at 1200px+ → 22px at 375px (iPhone SE)
+  return Math.max(14, Math.round(36 - w * 0.013));
+}
+
+const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+// ttyd serves WebSocket at the same path (Upgrade header)
+const ws = new WebSocket(wsProtocol + '//' + location.host + location.pathname);
+ws.binaryType = 'arraybuffer';
+
+const term = new Terminal({
+  fontSize: fontSizeForWidth(window.innerWidth),
+  fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'Menlo', monospace",
+  theme: { background: '#1a1a1a' },
+  allowProposedApi: true,
+});
+// UMD bundles: window.FitAddon IS the FitAddon class, same for WebLinksAddon
+const fitAddon = new FitAddon();
+const webLinksAddon = new WebLinksAddon();
+term.loadAddon(fitAddon);
+term.loadAddon(webLinksAddon);
+term.open(document.getElementById('terminal'));
+fitAddon.fit();
+
+ws.onopen = () => {
+  term.write('\x1b[32mConnected\x1b[0m\r\n');
+  // Send initial size
+  const dims = { cols: term.cols, rows: term.rows };
+  ws.send(JSON.stringify(dims));
+};
+
+ws.onerror = (e) => {
+  term.write('\r\n\x1b[31mWebSocket error.\x1b[0m\r\n');
+  console.error('pair: WS error', e);
+};
+
+ws.onmessage = (e) => {
+  if (typeof e.data === 'string') return; // ignore JSON control messages
+  term.write(new Uint8Array(e.data));
+};
+
+term.onData((data) => {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(data);
+  }
+});
+
+// Resize handler
+let resizeTimeout;
+function onResize() {
+  clearTimeout(resizeTimeout);
+  resizeTimeout = setTimeout(() => {
+    const fs = fontSizeForWidth(window.innerWidth);
+    term.setOption('fontSize', fs);
+    fitAddon.fit();
+    if (ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ cols: term.cols, rows: term.rows }));
+    }
+  }, 150);
+}
+window.addEventListener('resize', onResize);
+window.addEventListener('orientationchange', onResize);
+
+// Handle WebSocket close
+ws.onclose = () => {
+  term.write('\r\n\x1b[31mConnection lost. Refresh to reconnect.\x1b[0m\r\n');
+};
+</script>
+</body>
+</html>
