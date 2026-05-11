@@ -45,22 +45,6 @@ defmodule Mix.Tasks.Pair do
     dir
   end
 
-  @credential_vars ~w(
-    ANTHROPIC_API_KEY OPENAI_API_KEY GOOGLE_API_KEY
-    GEMINI_API_KEY DEEPSEEK_API_KEY GROQ_API_KEY
-    OPENROUTER_API_KEY TOGETHER_API_KEY
-    VERTEX_AI_CREDENTIALS GOOGLE_APPLICATION_CREDENTIALS
-    COHERE_API_KEY MISTRAL_API_KEY
-    API_KEY
-  )
-
-  # Git credentials — forwarded so agent can commit on server
-  @git_vars ~w(
-    GIT_AUTHOR_NAME GIT_AUTHOR_EMAIL
-    GIT_COMMITTER_NAME GIT_COMMITTER_EMAIL
-    GIT_SSH_COMMAND
-  )
-
   def run(args) do
     case args do
       ["server" | _] -> server()
@@ -69,17 +53,18 @@ defmodule Mix.Tasks.Pair do
       ["list"] -> list()
       ["join" | rest] -> join(rest)
       ["stop" | rest] -> stop(rest)
+      ["remote" | rest] -> start(rest)  # mix task: remote same as start
       [agent | rest] -> start([agent | rest])
       [] ->
         IO.puts("""
         Usage:
-          pair server              Start orchestrator daemon
-          pair connect <host>      Set default server
-          pair pi                  Start pi in current dir
-          pair claude /path        Start Claude in /path
+          pair pi                  Start pi locally
+          pair connect <host>      Set remote server
+          pair remote pi           Start pi on remote server
           pair list                List sessions
-          pair join <name>         Join session
-          pair stop <name>         Stop session
+          pair browse              Interactive picker
+          pair join <name>         Reconnect (partial match OK)
+          pair stop <name>         Stop a session
         """)
     end
   end
@@ -106,43 +91,88 @@ defmodule Mix.Tasks.Pair do
   defp start(args) do
     {agent, root_path} = parse_start_args(args)
     id = Path.basename(root_path) <> "-#{:rand.uniform(999)}"
-    creds = detect_creds()
-    env = creds
 
-    body = Jason.encode!(%{root_path: root_path, env: env, agent: agent, host: server_host()})
+    if server_host() != "127.0.0.1" do
+      IO.puts("Starting fresh session on #{server_host()}")
+      IO.puts("  SSH to the server and run 'pair pi' in your project to use existing code.")
+    end
+
+    body = Jason.encode!(%{
+      root_path: root_path,
+      env: %{},
+      agent: agent,
+      host: server_host()
+    })
 
     case api_post("session/#{id}/start", body) do
       {:ok, resp} ->
-        url = resp["url"]
-
-        if System.get_env("TMUX") != nil do
-          if server_host() == "127.0.0.1" do
-            # Local: switch client to agent session
-            cmd = "while ! tmux has-session -t pair-#{id} 2>/dev/null; do sleep 0.2; done; " <>
-                  "tmux switch-client -t pair-#{id}"
-            System.cmd("sh", ["-c", cmd])
-          else
-            # Remote: try SSH into tmux, fallback to browser
-            host = server_host()
-            IO.puts("Connecting to #{host} ...")
-            attach_remote(host, id, url)
-          end
-        else
-          if server_host() == "127.0.0.1" do
-            # Local: attach directly
-            System.cmd("tmux", ["attach", "-t", "pair-#{id}"], into: IO.stream(:stdio, :line))
-          else
-            # Remote: try SSH into tmux, fallback to browser
-            host = server_host()
-            IO.puts("Connecting to #{host} ...")
-            attach_remote(host, id, url)
-          end
-        end
+        handle_start_response(resp, id)
 
       {:error, reason} ->
-        IO.puts("Failed: #{inspect(reason)}")
-        IO.puts("Is the orchestrator running? Run: pair server")
+        # Local: try auto-starting the server
+        if server_host() == "127.0.0.1" do
+          IO.puts("Server not running — starting it now...")
+          {_, 0} = System.cmd("sh", ["-c", "cd #{find_project_root()} && mix pair server &"],
+                              stderr_to_stdout: true)
+          # Wait for it to come up
+          Enum.reduce_while(1..20, nil, fn _, _ ->
+            Process.sleep(500)
+            case api_get("health") do
+              {:ok, _} -> {:halt, :ok}
+              _ -> {:cont, nil}
+            end
+          end)
+          # Retry
+          case api_post("session/#{id}/start", body) do
+            {:ok, resp} -> handle_start_response(resp, id)
+            _ ->
+              IO.puts("Server started but still unreachable. Check 'mix pair server' manually.")
+          end
+        else
+          IO.puts("Failed: #{inspect(reason)}")
+          IO.puts("Is the orchestrator running? Run: pair server")
+        end
     end
+  end
+
+  defp handle_start_response(resp, id) do
+    url = resp["url"]
+    if System.get_env("TMUX") != nil do
+      if server_host() == "127.0.0.1" do
+        cmd = "while ! tmux has-session -t pair-#{id} 2>/dev/null; do sleep 0.2; done; " <>
+              "tmux switch-client -t pair-#{id}"
+        System.cmd("sh", ["-c", cmd])
+      else
+        host = server_host()
+        IO.puts("Connecting to #{host} ...")
+        attach_remote(host, id, url)
+      end
+    else
+      if server_host() == "127.0.0.1" do
+        System.cmd("tmux", ["attach", "-t", "pair-#{id}"], into: IO.stream(:stdio, :line))
+      else
+        host = server_host()
+        IO.puts("Connecting to #{host} ...")
+        attach_remote(host, id, url)
+      end
+    end
+  end
+
+  defp find_project_root do
+    # Walk up from cwd looking for mix.exs with "Pair"
+    dir = File.cwd!()
+    root = Enum.find_value(Stream.iterate(dir, &Path.dirname/1), fn d ->
+      mix = Path.join(d, "mix.exs")
+      if File.exists?(mix) and String.contains?(File.read!(mix), "Pair"), do: d
+    end)
+    # Fallback: common locations
+    root || Enum.find([
+      Path.join(System.user_home!(), "dev/pair/pair"),
+      Path.join(System.user_home!(), "dev/pair"),
+      Path.join(System.user_home!(), "dev/everywhere/pair"),
+      Path.join(System.user_home!(), "pair"),
+      "/usr/local/lib/pair"
+    ], &File.exists?(Path.join(&1, "mix.exs"))) || File.cwd!()
   end
 
   defp list do
@@ -290,34 +320,5 @@ defmodule Mix.Tasks.Pair do
     IO.puts("")
     IO.puts("Browser: #{url}")
     System.cmd("open", [url], stderr_to_stdout: true)
-  end
-
-  defp detect_creds do
-    creds = %{}
-
-    creds = case System.get_env("KEY") do
-      nil -> creds
-      key ->
-        IO.puts("   Forwarding KEY=#{String.slice(key, 0, 10)}...")
-        Map.put(creds, "API_KEY", key)
-    end
-
-    Enum.reduce(@credential_vars, creds, fn var, acc ->
-      case System.get_env(var) do
-        nil -> acc
-        val ->
-          unless Map.has_key?(acc, var), do: Map.put(acc, var, val), else: acc
-      end
-    end)
-    |> then(fn acc ->
-      # Git credentials
-      acc = Enum.reduce(@git_vars, acc, fn var, inner_acc ->
-        case System.get_env(var) do
-          nil -> inner_acc
-          val -> Map.put(inner_acc, var, val)
-        end
-      end)
-      acc
-    end)
   end
 end

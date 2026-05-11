@@ -38,27 +38,16 @@ defmodule Pair.SessionServer do
 
     # Build env exports and resolve agent binary
     env_exports = build_env_exports(Map.delete(env, "PAIR_AGENT_BIN"))
-    # Always find pi on the server. Client's binary path is irrelevant.
-    agent_bin = System.find_executable(agent) || agent
 
-    # Use a dedicated session file so restarts always resume the right conversation
-    session_file = "/tmp/pair-sessions/#{id}.jsonl"
-    File.mkdir_p!("/tmp/pair-sessions")
     # Ensure the working directory exists
     File.mkdir_p!(root_path)
 
-    # For pi: use --session to pin to a specific file (not --continue which picks latest)
-    agent_cmd = if String.contains?(agent_bin, "pi") do
-      "#{agent_bin} --session #{session_file}"
-    else
-      agent_bin
-    end
-
+    # Run whatever the user passed — no agent-specific logic
     cmd =
       if env_exports != "" do
-        "cd #{escape(root_path)} && #{env_exports} && exec #{agent_cmd}"
+        "cd #{escape(root_path)} && #{env_exports} && exec #{agent}"
       else
-        "cd #{escape(root_path)} && exec #{agent_cmd}"
+        "cd #{escape(root_path)} && exec #{agent}"
       end
     if debug?(), do: Logger.info("Starting tmux: #{String.slice(cmd, 0, 150)}")
     {output, status} =
@@ -75,7 +64,7 @@ defmodule Pair.SessionServer do
     ttyd_port = ensure_ttyd(session_name)
 
     # Customize tmux status bar with connection info
-    set_tmux_status(session_name, id, ttyd_port, Map.get(env, "HOST", "unknown"))
+    set_tmux_status(session_name, id, ttyd_port, Map.get(env, "HOST", "unknown"), root_path)
 
     # Start health checker
     schedule_health_check()
@@ -85,8 +74,6 @@ defmodule Pair.SessionServer do
       root_path: root_path,
       env: env,
       agent: agent,
-      agent_bin: agent_bin,
-      session_file: session_file,
       client_host: Map.get(env, "HOST"),
       tmux_session: session_name,
       ttyd_port: ttyd_port,
@@ -99,7 +86,7 @@ defmodule Pair.SessionServer do
   @impl true
   def handle_call(:get_state, _from, state) do
     pi_alive = pi_running?(state.tmux_session)
-    bind = System.get_env("BIND", "127.0.0.1")
+    bind = Application.get_env(:pair, :bind, "127.0.0.1")
     # Use client-provided host, or PAIR_HOST, or detected hostname
     host = state[:client_host] || resolve_host(bind)
     url = "http://#{host}:#{state.ttyd_port}"
@@ -116,24 +103,41 @@ defmodule Pair.SessionServer do
       }, state}
   end
 
-  # Periodic health check — restart pi if it died
+  # Periodic health check — restart pi if it crashed, stop session if user exited
   @impl true
   def handle_info(:health_check, state) do
-    running = pi_running?(state.tmux_session)
-    if debug?(), do: Logger.debug("health_check #{state.tmux_session} running=#{running}")
-    unless running do
-      Logger.warning("agent died in session #{state.tmux_session}, restarting...")
-      restart_agent(state)
-    end
+    result =
+      case pane_status(state.tmux_session) do
+        :running ->
+          if debug?(), do: Logger.debug("health_check #{state.tmux_session} running")
+          :ok
+        :dead ->
+          Logger.info("Agent exited intentionally in #{state.tmux_session}, stopping session")
+          :stop
+        :gone ->
+          Logger.warning("tmux session #{state.tmux_session} gone, stopping")
+          :stop
+        :crashed ->
+          Logger.warning("agent crashed in #{state.tmux_session}, restarting...")
+          restart_agent(state)
+          :ok
+      end
 
-    schedule_health_check()
-    {:noreply, state}
+    case result do
+      :stop -> {:stop, :normal, state}
+      :ok ->
+        schedule_health_check()
+        {:noreply, state}
+    end
   end
 
   @impl true
-  def terminate(_reason, _state) do
-    # Optionally kill tmux session on GenServer shutdown
-    # System.cmd("tmux", ["kill-session", "-t", state.tmux_session], stderr: :discard)
+  def terminate(reason, state) do
+    Logger.info("Session #{state.id} terminating (reason: #{inspect(reason)})")
+    # Kill tmux session
+    System.cmd("tmux", ["kill-session", "-t", state.tmux_session], stderr_to_stdout: true)
+    # Kill ttyd for this port
+    System.cmd("pkill", ["-f", "ttyd.*#{state.ttyd_port}"], stderr_to_stdout: true)
     :ok
   end
 
@@ -167,39 +171,42 @@ defmodule Pair.SessionServer do
     |> Enum.join("; ")
   end
 
-  defp pi_running?(session) do
-    format = ~S(#{pane_pid})
+  # Returns :running, :dead (user intentionally exited), :crashed, or :gone (tmux session missing)
+  defp pane_status(session) do
+    format = ~S(#{pane_dead} #{pane_pid})
     {output, 0} = System.cmd("tmux", ["list-panes", "-t", session, "-F", format])
-    pid_str = String.trim(output)
+    [dead_str, pid_str] = String.split(String.trim(output), " ", parts: 2)
 
-    if pid_str != "" do
-      # exec replaces the shell, so the pane PID IS the agent process.
-      # Just check if it's still alive.
-      {_, exit_code} = System.cmd("kill", ["-0", pid_str], stderr_to_stdout: true)
-      exit_code == 0
-    else
-      false
+    cond do
+      dead_str == "1" ->
+        # exec replaces the shell. When the agent exits, the pane dies.
+        # This means the user intentionally quit (Ctrl+D, "exit", etc).
+        :dead
+
+      pid_str == "" or pid_str == "0" ->
+        :crashed
+
+      true ->
+        {_, exit_code} = System.cmd("kill", ["-0", pid_str], stderr_to_stdout: true)
+        if exit_code == 0, do: :running, else: :crashed
     end
   rescue
-    _ -> false
+    _ -> :gone
+  end
+
+  # Backward-compat: kept for get_state API
+  defp pi_running?(session) do
+    pane_status(session) == :running
   end
 
   defp restart_agent(state) do
     env_exports = build_env_exports(state.env)
-    agent_bin = state.agent_bin
-
-    # Resume the exact same conversation via pinned session file
-    agent_cmd = if String.contains?(agent_bin, "pi") do
-      "#{agent_bin} --session #{state.session_file}"
-    else
-      agent_bin
-    end
 
     cmd =
       if env_exports != "" do
-        "cd #{escape(state.root_path)} && #{env_exports} && exec #{agent_cmd}"
+        "cd #{escape(state.root_path)} && #{env_exports} && exec #{state.agent}"
       else
-        "cd #{escape(state.root_path)} && exec #{agent_cmd}"
+        "cd #{escape(state.root_path)} && exec #{state.agent}"
       end
 
     # Kill and recreate — simpler and more reliable than send-keys
@@ -209,7 +216,7 @@ defmodule Pair.SessionServer do
       "sh", "-c", cmd
     ], stderr_to_stdout: true)
 
-    set_tmux_status(state.tmux_session, state.id, state.ttyd_port, Map.get(state.env, "HOST", "unknown"))
+    set_tmux_status(state.tmux_session, state.id, state.ttyd_port, Map.get(state.env, "HOST", "unknown"), state.root_path)
 
     Logger.info("Restarted agent in #{state.tmux_session}")
   rescue
@@ -220,9 +227,10 @@ defmodule Pair.SessionServer do
     Process.send_after(self(), :health_check, 10_000)
   end
 
-  defp set_tmux_status(session_name, id, ttyd_port, host) do
+  defp set_tmux_status(session_name, _id, ttyd_port, host, root_path) do
     url = "http://#{host}:#{ttyd_port}"
-    left = " #[fg=cyan,bold]pair #{id} #[fg=default]| ssh root@#{host} tmux attach -t #{session_name} "
+    folder = Path.basename(root_path)
+    left = " #[fg=cyan,bold]#{folder} #[fg=default]"
     right = " #[fg=green]#{url} #[fg=default] "
 
     # Resize to largest connected client (desktop > phone > detached default)
@@ -238,7 +246,7 @@ defmodule Pair.SessionServer do
 
   defp ensure_ttyd(session_name) do
     port = allocate_port(session_name)
-    bind = System.get_env("BIND", "127.0.0.1")
+    bind = Application.get_env(:pair, :bind, "127.0.0.1")
 
     # Kill any existing ttyd on this port
     System.cmd("pkill", ["-f", "ttyd.*#{port}"], stderr_to_stdout: true)

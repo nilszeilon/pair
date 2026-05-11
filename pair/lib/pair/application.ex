@@ -5,7 +5,8 @@ defmodule Pair.Application do
 
   @impl true
   def start(_type, _args) do
-    bind = System.get_env("BIND", "127.0.0.1")
+    bind = System.get_env("BIND") || tailscale_ip() || "127.0.0.1"
+    Application.put_env(:pair, :bind, bind)
     port = String.to_integer(System.get_env("PAIR_PORT", "4242"))
 
     children = [
@@ -18,12 +19,18 @@ defmodule Pair.Application do
     🧠 Pair Session orchestrator
        REST API:  http://#{bind}:#{port}
        Sessions:  http://#{bind}:#{port}/
-
-       Default: localhost only. Use BIND=0.0.0.0 for Tailscale access.
     """)
 
     opts = [strategy: :one_for_one, name: Pair.Supervisor]
     Supervisor.start_link(children, opts)
+  end
+
+  defp tailscale_ip do
+    case System.cmd("tailscale", ["ip", "-4"]) do
+      {ip, 0} ->
+        ip |> String.trim() |> String.split("\n") |> List.last()
+      _ -> nil
+    end
   end
 
   defp parse_ip(ip) when is_binary(ip) do
