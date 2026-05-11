@@ -1,4 +1,4 @@
-module pair
+module github.com/nilszeilon/pair-client
 
 go 1.25.5
 

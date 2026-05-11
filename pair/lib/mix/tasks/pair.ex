@@ -1,19 +1,9 @@
 defmodule Mix.Tasks.Pair do
   @moduledoc """
-  Fault-tolerant, shareable agent sessions.
+  Shareable, fault-tolerant coding agent sessions.
 
-  ## Server (run once)
-      pair server              Start the orchestrator daemon
-
-  ## Client (any terminal, talks to running server)
-      pair start pi            Start a pi session in current directory
-      pair start pi /path      Start pi in /path
-      pair start claude .      Start Claude Code in current directory
-      pair list                List all active sessions
-      pair join myproject      Get URL for existing session
-      pair stop myproject      Stop a session
-
-  Credentials forwarded automatically. Use KEY=sk-... to pass a key.
+  See the Go client (pair) for the primary CLI. This mix task
+  is an alternative for Elixir users.
   """
 
   use Mix.Task
