@@ -59,12 +59,6 @@ func main() {
 		stop(os.Args[2])
 	case "browse":
 		browse()
-	case "pick":
-		agent := "pi"
-		if len(os.Args) > 2 {
-			agent = strings.Join(os.Args[2:], " ")
-		}
-		pick(agent)
 	case "remote":
 		// pair remote pi - explicitly remote, requires pair connect
 		if len(os.Args) < 3 {
@@ -809,172 +803,6 @@ func browse() {
 	}
 }
 
-// --- pick: interactive filesystem browser for starting sessions ---
-
-type dirEntry struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
-}
-
-type pickModel struct {
-	path     string
-	entries  []dirEntry
-	cursor   int
-	agent    string
-	host     string
-	selected string
-	err      error
-	loading  bool
-}
-
-func (m pickModel) Init() tea.Cmd {
-	return m.fetchDir(m.path)
-}
-
-func (m pickModel) fetchDir(path string) tea.Cmd {
-	return func() tea.Msg {
-		url := fmt.Sprintf("http://%s:%s/browse?path=%s", m.host, serverPort, path)
-		resp, err := http.Get(url)
-		if err != nil {
-			return pickModel{err: err, path: path}
-		}
-		defer resp.Body.Close()
-		var result struct {
-			Path    string      `json:"path"`
-			Entries []dirEntry  `json:"entries"`
-		}
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			return pickModel{err: err, path: path}
-		}
-		// Only show directories
-		var dirs []dirEntry
-		for _, e := range result.Entries {
-			if e.Type == "dir" {
-				dirs = append(dirs, e)
-			}
-		}
-		return pickModel{path: result.Path, entries: dirs, loading: false}
-	}
-}
-
-func (m pickModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case pickModel:
-		if msg.err != nil {
-			m.err = msg.err
-			m.loading = false
-			return m, nil
-		}
-		m.path = msg.path
-		m.entries = msg.entries
-		m.cursor = 0
-		m.loading = false
-		m.err = nil
-		return m, nil
-	case tea.KeyMsg:
-		switch msg.String() {
-		case "q", "esc", "ctrl+c":
-			return m, tea.Quit
-		case "up", "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "down", "j":
-			if m.cursor < len(m.entries)-1 {
-				m.cursor++
-			}
-		case "enter":
-			if m.cursor < len(m.entries) {
-				m.selected = m.path + "/" + m.entries[m.cursor].Name
-			}
-			return m, tea.Quit
-		case "right", "l":
-			if m.cursor < len(m.entries) {
-				m.loading = true
-				newPath := m.path + "/" + m.entries[m.cursor].Name
-				return m, m.fetchDir(newPath)
-			}
-		case "left", "h", "backspace":
-			if m.path != "/" && m.path != "" {
-				m.loading = true
-				parent := filepath.Dir(m.path)
-				if parent == "" {
-					parent = "/"
-				}
-				return m, m.fetchDir(parent)
-			}
-		case "b":
-			// Go to home
-			m.loading = true
-			return m, m.fetchDir("~")
-		case "/":
-			m.loading = true
-			return m, m.fetchDir("/")
-		}
-	}
-	return m, nil
-}
-
-func (m pickModel) View() string {
-	if m.err != nil {
-		return fmt.Sprintf("Error: %v\n", m.err)
-	}
-	if m.loading {
-		return "Loading...\n"
-	}
-
-	var b strings.Builder
-	fmt.Fprintf(&b, "\n%s\n\n", m.path)
-
-	if len(m.entries) == 0 {
-		b.WriteString("  (empty)\n")
-	} else {
-		for i, e := range m.entries {
-			cursor := "  "
-			if m.cursor == i {
-				cursor = "▸ "
-			}
-			fmt.Fprintf(&b, "%s📁 %s\n", cursor, e.Name)
-		}
-	}
-
-	b.WriteString("\n")
-	b.WriteString(strings.Repeat("─", 40))
-	b.WriteString("\n↑/↓ nav  |  → enter dir  |  ← back  |  enter: pick  |  b: home  |  q: quit\n")
-	return b.String()
-}
-
-func pick(agent string) {
-	host := remoteHost()
-	if host == "" {
-		host = serverHost()
-	}
-
-	m := pickModel{path: "~", agent: agent, host: host, loading: true}
-	p := tea.NewProgram(m, tea.WithoutSignalHandler())
-	final, err := p.Run()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "TUI error: %v\n", err)
-		os.Exit(1)
-	}
-
-	fm := final.(pickModel)
-	if fm.selected == "" {
-		return
-	}
-
-	// Auto-start server if needed
-	if _, err := http.Get(fmt.Sprintf("http://%s:%s/health", fm.host, serverPort)); err != nil {
-		fmt.Println("Server not running - starting it now...")
-		if err := ensureServerRunning(); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to start server: %v\n", err)
-			os.Exit(1)
-		}
-	}
-
-	startSession([]string{fm.agent, fm.selected}, fm.host, fm.host, fm.host != serverHost())
-}
-
 func printUsage() {
 	fmt.Println(`Usage:
   pair <agent>            Start any coding agent locally
@@ -982,7 +810,6 @@ func printUsage() {
   pair remote <agent>      Start agent on the remote server
   pair list                List sessions (local + remote)
   pair browse              Interactive session picker
-  pair pick [agent]        Browse server filesystem, pick dir, start agent
   pair join <name>         Reconnect (partial match OK)
   pair stop <name>         Stop a session`)
 }
