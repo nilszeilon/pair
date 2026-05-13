@@ -166,7 +166,7 @@ defmodule Mix.Tasks.Pair do
   end
 
   defp list do
-    case api_get("") do
+    case api_get("sessions") do
       {:ok, sessions} when sessions == [] ->
         IO.puts("No active sessions.")
       {:ok, sessions} ->

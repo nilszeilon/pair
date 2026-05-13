@@ -288,7 +288,7 @@ func fetchAllSessions() []session {
 }
 
 func fetchSessionsFrom(host string) []session {
-	resp, err := http.Get(fmt.Sprintf("http://%s:%s/", host, serverPort))
+	resp, err := http.Get(fmt.Sprintf("http://%s:%s/sessions", host, serverPort))
 	if err != nil {
 		return nil
 	}

@@ -225,4 +225,157 @@ defmodule Pair.HTTPServerTest do
       assert conn.resp_body == "ok"
     end
   end
+
+  describe "GET / (HTML for browsers)" do
+    test "returns HTML when Accept: text/html" do
+      conn =
+        conn(:get, "/")
+        |> put_req_header("accept", "text/html,application/xhtml+xml")
+        |> HTTPServer.call(HTTPServer.init([]))
+
+      assert conn.status == 200
+      assert get_resp_header(conn, "content-type") |> List.first() =~ "text/html"
+      # Key HTML elements
+      assert conn.resp_body =~ "<title>Pair"
+      assert conn.resp_body =~ "new-session-form"
+      assert conn.resp_body =~ "session-list"
+      assert conn.resp_body =~ "browse-modal"
+      assert conn.resp_body =~ "browse-btn"
+    end
+
+    test "returns JSON when no HTML accept header" do
+      conn = conn(:get, "/") |> HTTPServer.call(HTTPServer.init([]))
+      assert conn.status == 200
+      {:ok, sessions} = Jason.decode(conn.resp_body)
+      assert is_list(sessions)
+    end
+  end
+
+  describe "GET /sessions" do
+    test "returns JSON session list" do
+      conn = conn(:get, "/sessions") |> HTTPServer.call(HTTPServer.init([]))
+      assert conn.status == 200
+      {:ok, sessions} = Jason.decode(conn.resp_body)
+      assert is_list(sessions)
+    end
+
+    test "returns JSON even with HTML accept header" do
+      conn =
+        conn(:get, "/sessions")
+        |> put_req_header("accept", "text/html")
+        |> HTTPServer.call(HTTPServer.init([]))
+
+      assert conn.status == 200
+      {:ok, _} = Jason.decode(conn.resp_body)
+    end
+  end
+
+  describe "POST /session/:id/start (path resolution)" do
+    test "resolves ~ to home directory" do
+      id = "http-test-tilde-#{:rand.uniform(999)}"
+      body = Jason.encode!(%{"root_path" => "~", "agent" => "echo"})
+
+      conn =
+        conn(:post, "/session/#{id}/start", body)
+        |> put_req_header("content-type", "application/json")
+        |> HTTPServer.call(HTTPServer.init([]))
+
+      assert conn.status == 201
+      {:ok, decoded} = Jason.decode(conn.resp_body)
+      assert decoded["root_path"] == System.user_home!()
+    end
+
+    test "resolves ~/subdir to home subdirectory" do
+      id = "http-test-tilde-sub-#{:rand.uniform(999)}"
+      body = Jason.encode!(%{"root_path" => "~/Documents", "agent" => "echo"})
+
+      conn =
+        conn(:post, "/session/#{id}/start", body)
+        |> put_req_header("content-type", "application/json")
+        |> HTTPServer.call(HTTPServer.init([]))
+
+      assert conn.status == 201
+      {:ok, decoded} = Jason.decode(conn.resp_body)
+      assert decoded["root_path"] == Path.join(System.user_home!(), "Documents")
+    end
+
+    test "resolves relative path from home" do
+      id = "http-test-rel-#{:rand.uniform(999)}"
+      body = Jason.encode!(%{"root_path" => "dev", "agent" => "echo"})
+
+      conn =
+        conn(:post, "/session/#{id}/start", body)
+        |> put_req_header("content-type", "application/json")
+        |> HTTPServer.call(HTTPServer.init([]))
+
+      assert conn.status == 201
+      {:ok, decoded} = Jason.decode(conn.resp_body)
+      assert decoded["root_path"] == Path.join(System.user_home!(), "dev")
+    end
+
+    test "keeps absolute paths as-is" do
+      id = "http-test-abs-#{:rand.uniform(999)}"
+
+      conn =
+        conn(:post, "/session/#{id}/start", Jason.encode!(%{"root_path" => "/tmp/foo", "agent" => "echo"}))
+        |> put_req_header("content-type", "application/json")
+        |> HTTPServer.call(HTTPServer.init([]))
+
+      assert conn.status == 201
+      {:ok, decoded} = Jason.decode(conn.resp_body)
+      assert decoded["root_path"] == "/tmp/foo"
+    end
+  end
+
+  describe "GET /browse" do
+    test "returns directory listing for valid path" do
+      conn = conn(:get, "/browse?path=/tmp") |> HTTPServer.call(HTTPServer.init([]))
+      assert conn.status == 200
+      {:ok, data} = Jason.decode(conn.resp_body)
+      assert data["path"] == "/tmp"
+      assert is_list(data["entries"])
+      for e <- data["entries"] do
+        assert Map.has_key?(e, "name")
+        assert e["type"] in ["dir", "file"]
+      end
+    end
+
+    test "resolves ~ to home directory" do
+      conn = conn(:get, "/browse?path=~") |> HTTPServer.call(HTTPServer.init([]))
+      assert conn.status == 200
+      {:ok, data} = Jason.decode(conn.resp_body)
+      assert data["path"] == System.user_home!()
+      assert is_list(data["entries"])
+    end
+
+    test "resolves ~/subdir correctly" do
+      conn = conn(:get, "/browse?path=~/Documents") |> HTTPServer.call(HTTPServer.init([]))
+      assert conn.status == 200
+      {:ok, data} = Jason.decode(conn.resp_body)
+      assert data["path"] == Path.join(System.user_home!(), "Documents")
+    end
+
+    test "defaults to home when no path given" do
+      conn = conn(:get, "/browse") |> HTTPServer.call(HTTPServer.init([]))
+      assert conn.status == 200
+      {:ok, data} = Jason.decode(conn.resp_body)
+      assert data["path"] == System.user_home!()
+    end
+
+    test "returns empty entries for non-existent path" do
+      conn = conn(:get, "/browse?path=/nonexistent_xyzzy_999") |> HTTPServer.call(HTTPServer.init([]))
+      assert conn.status == 200
+      {:ok, data} = Jason.decode(conn.resp_body)
+      assert data["entries"] == []
+    end
+
+    test "hides dotfiles" do
+      conn = conn(:get, "/browse?path=~") |> HTTPServer.call(HTTPServer.init([]))
+      assert conn.status == 200
+      {:ok, data} = Jason.decode(conn.resp_body)
+      for e <- data["entries"] do
+        refute String.starts_with?(e["name"], ".")
+      end
+    end
+  end
 end
