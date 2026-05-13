@@ -39,6 +39,35 @@ defmodule Pair.HTTPServer do
     send_resp(conn, 200, Jason.encode!(sessions, pretty: true))
   end
 
+  # Start a session with server-assigned incremental ID
+  post "/sessions" do
+    {:ok, body, conn} = read_body(conn)
+    id = Pair.Counter.next()
+    if debug?(), do: Logger.info("POST /sessions id=#{id} body=#{String.slice(body, 0, 200)}")
+    {root_path, env, agent} =
+      case Jason.decode(body) do
+        {:ok, %{"root_path" => path} = params} ->
+          env = Map.get(params, "env", %{})
+          host = Map.get(params, "host", "")
+          env = if host != "", do: Map.put(env, "HOST", host), else: env
+          {resolve_path(path), env, Map.get(params, "agent", "pi")}
+        _ -> {File.cwd!(), %{}, "pi"}
+      end
+
+    case start_session(id, root_path, env, agent) do
+      {:ok, _pid} ->
+        state = Pair.SessionServer.get_state(id)
+        send_resp(conn, 201, Jason.encode!(Map.merge(%{status: "started"}, state), pretty: true))
+
+      {:error, {:already_started, _pid}} ->
+        state = Pair.SessionServer.get_state(id)
+        send_resp(conn, 200, Jason.encode!(Map.merge(%{status: "already_running"}, state), pretty: true))
+
+      {:error, reason} ->
+        send_resp(conn, 500, Jason.encode!(%{error: inspect(reason)}))
+    end
+  end
+
   # Start a new session
   post "/session/:id/start" do
     {:ok, body, conn} = read_body(conn)
@@ -394,18 +423,8 @@ defmodule Pair.HTTPServer do
         e.preventDefault();
         const agent = document.getElementById('agent').value || 'pi';
         const raw = document.getElementById('root_path').value || '~';
-        var namePart;
-        if (raw === '~') {
-          namePart = 'home';
-        } else if (raw.indexOf('~/') === 0) {
-          namePart = raw.slice(2);
-        } else {
-          namePart = raw;
-        }
-        namePart = namePart.split('/').pop();
-        const id = namePart;
         try {
-          const r = await fetch('/session/' + encodeURIComponent(id) + '/start', {
+          const r = await fetch('/sessions', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ root_path: raw, agent: agent, env: {} })

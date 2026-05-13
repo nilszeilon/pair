@@ -19,6 +19,13 @@ defmodule Pair.HTTPServerTest do
       _ -> :ok
     end
 
+    # Ensure counter ETS table exists
+    case Process.whereis(Pair.Counter) do
+      nil ->
+        {:ok, _} = Pair.Counter.start_link([])
+      _ -> :ok
+    end
+
     :ok
   end
 

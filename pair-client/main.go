@@ -100,8 +100,7 @@ func startSession(args []string, connectHost, displayHost string, isRemote bool)
 	var rootPath string
 	if isRemote {
 		cwd, _ := os.Getwd()
-		id := filepath.Base(cwd)
-		rootPath = "/tmp/pair-sessions/" + id
+		rootPath = "/tmp/pair-sessions/" + filepath.Base(cwd)
 	} else {
 		if len(args) > 1 {
 			rootPath = args[1]
@@ -109,8 +108,6 @@ func startSession(args []string, connectHost, displayHost string, isRemote bool)
 			rootPath, _ = os.Getwd()
 		}
 	}
-
-	id := filepath.Base(rootPath)
 
 	// Build request
 	body := map[string]interface{}{
@@ -121,7 +118,7 @@ func startSession(args []string, connectHost, displayHost string, isRemote bool)
 	}
 	bodyJSON, _ := json.Marshal(body)
 
-	apiURL := fmt.Sprintf("http://%s:%s/session/%s/start", connectHost, serverPort, id)
+	apiURL := fmt.Sprintf("http://%s:%s/sessions", connectHost, serverPort)
 
 	resp, err := http.Post(apiURL, "application/json", bytes.NewReader(bodyJSON))
 	if err != nil {
@@ -149,6 +146,7 @@ func startSession(args []string, connectHost, displayHost string, isRemote bool)
 	respBody, _ := io.ReadAll(resp.Body)
 	json.Unmarshal(respBody, &result)
 
+	id, _ := result["id"].(string)
 	url2, _ := result["url"].(string)
 
 	// Clean one-line startup message

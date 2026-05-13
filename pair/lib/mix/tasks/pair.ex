@@ -80,7 +80,6 @@ defmodule Mix.Tasks.Pair do
 
   defp start(args) do
     {agent, root_path} = parse_start_args(args)
-    id = Path.basename(root_path)
 
     if server_host() != "127.0.0.1" do
       IO.puts("Starting fresh session on #{server_host()}")
@@ -94,8 +93,9 @@ defmodule Mix.Tasks.Pair do
       host: server_host()
     })
 
-    case api_post("session/#{id}/start", body) do
+    case api_post("sessions", body) do
       {:ok, resp} ->
+        id = resp["id"]
         handle_start_response(resp, id)
 
       {:error, reason} ->
@@ -113,8 +113,10 @@ defmodule Mix.Tasks.Pair do
             end
           end)
           # Retry
-          case api_post("session/#{id}/start", body) do
-            {:ok, resp} -> handle_start_response(resp, id)
+          case api_post("sessions", body) do
+            {:ok, resp} ->
+              id = resp["id"]
+              handle_start_response(resp, id)
             _ ->
               IO.puts("Server started but still unreachable. Check 'mix pair server' manually.")
           end
@@ -278,7 +280,7 @@ defmodule Mix.Tasks.Pair do
     case args do
       [a] ->
         if is_remote do
-          id = Path.basename(File.cwd!())
+          id = Integer.to_string(:rand.uniform(9999)) |> String.pad_leading(4, "0")
           {a, "/tmp/pair-sessions/#{id}"}
         else
           {a, File.cwd!()}
