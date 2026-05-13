@@ -42,8 +42,6 @@ defmodule Pair.HTTPServer do
   # Start a session with server-assigned incremental ID
   post "/sessions" do
     {:ok, body, conn} = read_body(conn)
-    id = Pair.Counter.next()
-    if debug?(), do: Logger.info("POST /sessions id=#{id} body=#{String.slice(body, 0, 200)}")
     {root_path, env, agent} =
       case Jason.decode(body) do
         {:ok, %{"root_path" => path} = params} ->
@@ -53,6 +51,10 @@ defmodule Pair.HTTPServer do
           {resolve_path(path), env, Map.get(params, "agent", "pi")}
         _ -> {File.cwd!(), %{}, "pi"}
       end
+
+    folder = Path.basename(root_path)
+    id = "#{folder}-#{Pair.Counter.next()}"
+    if debug?(), do: Logger.info("POST /sessions id=#{id} root=#{root_path}")
 
     case start_session(id, root_path, env, agent) do
       {:ok, _pid} ->
@@ -394,11 +396,9 @@ defmodule Pair.HTTPServer do
         const cls = alive ? 'alive' : 'dead';
         const label = alive ? 'live' : 'stopped';
         const started = s.started_at ? new Date(s.started_at).toLocaleString() : '-';
-        const folder = s.root_path ? s.root_path.split('/').pop() : '';
-        const displayName = folder ? folder + '-' + s.id : s.id;
         return '<div class="session-card">' +
           '<div class="info">' +
-            '<div class="name">' + esc(displayName) + '</div>' +
+            '<div class="name">' + esc(s.id) + '</div>' +
             '<div class="meta">' +
               '<span><span class="status ' + cls + '"></span>' + label + '</span>' +
               '<span>agent: ' + esc(s.agent || '?') + '</span>' +
@@ -522,8 +522,6 @@ defmodule Pair.HTTPServer do
       alive = s[:pi_alive] != false
       status_class = if alive, do: "alive", else: "dead"
       label = if alive, do: "live", else: "stopped"
-      folder = s[:root_path] |> to_string() |> Path.basename()
-      display = if folder != "" and folder != ".", do: "#{folder}-#{s[:id]}", else: s[:id]
 
       started =
         case s[:started_at] do
@@ -538,7 +536,7 @@ defmodule Pair.HTTPServer do
       """
       <div class="session-card">
         <div class="info">
-          <div class="name">#{escape_html(display)}</div>
+          <div class="name">#{escape_html(s[:id] || "?")}</div>
           <div class="meta">
             <span><span class="status #{status_class}"></span>#{label}</span>
             <span>agent: #{escape_html(s[:agent] || "?")}</span>
