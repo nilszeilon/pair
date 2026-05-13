@@ -174,7 +174,9 @@ defmodule Mix.Tasks.Pair do
       {:ok, sessions} ->
         IO.puts("Active sessions:\n")
         Enum.each(sessions, fn s ->
-          IO.puts("  #{s["id"]}")
+          folder = s["root_path"] |> to_string() |> Path.basename()
+          display = if folder != "" and folder != ".", do: "#{folder}-#{s["id"]}", else: s["id"]
+          IO.puts("  #{display}")
           IO.puts("    Agent:  #{s["agent"] || "unknown"}")
           IO.puts("    URL:    #{s["url"]}")
           IO.puts("    Path:   #{s["root_path"]}")

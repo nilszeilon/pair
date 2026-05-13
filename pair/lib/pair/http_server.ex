@@ -394,9 +394,11 @@ defmodule Pair.HTTPServer do
         const cls = alive ? 'alive' : 'dead';
         const label = alive ? 'live' : 'stopped';
         const started = s.started_at ? new Date(s.started_at).toLocaleString() : '-';
+        const folder = s.root_path ? s.root_path.split('/').pop() : '';
+        const displayName = folder ? folder + '-' + s.id : s.id;
         return '<div class="session-card">' +
           '<div class="info">' +
-            '<div class="name">' + esc(s.id) + '</div>' +
+            '<div class="name">' + esc(displayName) + '</div>' +
             '<div class="meta">' +
               '<span><span class="status ' + cls + '"></span>' + label + '</span>' +
               '<span>agent: ' + esc(s.agent || '?') + '</span>' +
@@ -520,6 +522,8 @@ defmodule Pair.HTTPServer do
       alive = s[:pi_alive] != false
       status_class = if alive, do: "alive", else: "dead"
       label = if alive, do: "live", else: "stopped"
+      folder = s[:root_path] |> to_string() |> Path.basename()
+      display = if folder != "" and folder != ".", do: "#{folder}-#{s[:id]}", else: s[:id]
 
       started =
         case s[:started_at] do
@@ -534,7 +538,7 @@ defmodule Pair.HTTPServer do
       """
       <div class="session-card">
         <div class="info">
-          <div class="name">#{escape_html(s[:id] || "?")}</div>
+          <div class="name">#{escape_html(display)}</div>
           <div class="meta">
             <span><span class="status #{status_class}"></span>#{label}</span>
             <span>agent: #{escape_html(s[:agent] || "?")}</span>

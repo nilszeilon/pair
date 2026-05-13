@@ -260,8 +260,9 @@ func list() {
 
 	for _, s := range allSessions {
 		project := filepath.Base(s.RootPath)
-		fmt.Printf("  %s  %s  %s\n", s.Agent, project, s.Server)
-		fmt.Printf("  %s  %s\n\n", s.ID, s.URL)
+		display := project + "-" + s.ID
+		fmt.Printf("  %s  %s  %s\n", s.Agent, display, s.Server)
+		fmt.Printf("  %s\n\n", s.URL)
 	}
 }
 
@@ -761,7 +762,8 @@ func (m browseModel) View() string {
 			cursor = "▸ "
 		}
 		project := filepath.Base(s.RootPath)
-		fmt.Fprintf(&b, "%s%s  %s  %s\n", cursor, s.Agent, project, s.Server)
+		display := project + "-" + s.ID
+		fmt.Fprintf(&b, "%s%s  %s  %s\n", cursor, s.Agent, display, s.Server)
 	}
 
 	if m.cursor < len(m.sessions) {
