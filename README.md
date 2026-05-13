@@ -19,16 +19,25 @@ run the server on a remote machine and connect from anywhere.
 
 ## Install
 
-macOS:
+**macOS:**
 
 ```bash
 brew install elixir tmux ttyd golang
 ```
 
-Linux:
+**Linux (Ubuntu/Debian):**
 
 ```bash
-apt install elixir tmux ttyd golang
+# Prerequisites
+apt install tmux ttyd golang
+
+# Elixir 1.18 + Erlang 27 (required, Ubuntu's apt package is too old)
+curl -fsSL https://binaries2.erlang-solutions.com/ubuntu/pool/contrib/e/esl-erlang/esl-erlang_27.3-1~ubuntu~noble_amd64.deb -o /tmp/esl.deb
+dpkg -i /tmp/esl.deb
+curl -fsSL https://github.com/elixir-lang/elixir/releases/download/v1.18.3/elixir-otp-27.zip -o /tmp/elixir.zip
+unzip -qo /tmp/elixir.zip -d /usr/local/elixir
+ln -sf /usr/local/elixir/bin/elixir /usr/local/bin/elixir
+ln -sf /usr/local/elixir/bin/mix /usr/local/bin/mix
 ```
 
 Optional: [Tailscale](https://tailscale.com/download) for phone access
