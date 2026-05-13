@@ -53,7 +53,7 @@ defmodule Pair.HTTPServer do
       end
 
     folder = Path.basename(root_path)
-    id = "#{folder}-#{Pair.Counter.next()}"
+    id = "#{Pair.Counter.next()}-#{folder}"
     if debug?(), do: Logger.info("POST /sessions id=#{id} root=#{root_path}")
 
     case start_session(id, root_path, env, agent) do

@@ -21,3 +21,4 @@ Thumbs.db
 auth.json
 settings.json
 *.pem
+pair-client/pair-client
