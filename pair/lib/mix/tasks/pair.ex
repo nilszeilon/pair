@@ -80,7 +80,7 @@ defmodule Mix.Tasks.Pair do
 
   defp start(args) do
     {agent, root_path} = parse_start_args(args)
-    id = Path.basename(root_path) <> "-#{:rand.uniform(999)}"
+    id = Path.basename(root_path)
 
     if server_host() != "127.0.0.1" do
       IO.puts("Starting fresh session on #{server_host()}")
@@ -278,7 +278,7 @@ defmodule Mix.Tasks.Pair do
     case args do
       [a] ->
         if is_remote do
-          id = Path.basename(File.cwd!()) <> "-#{:rand.uniform(999)}"
+          id = Path.basename(File.cwd!())
           {a, "/tmp/pair-sessions/#{id}"}
         else
           {a, File.cwd!()}

@@ -403,7 +403,7 @@ defmodule Pair.HTTPServer do
           namePart = raw;
         }
         namePart = namePart.split('/').pop();
-        const id = namePart + '-' + Math.floor(Math.random() * 999);
+        const id = namePart;
         try {
           const r = await fetch('/session/' + encodeURIComponent(id) + '/start', {
             method: 'POST',
