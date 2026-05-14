@@ -5,7 +5,7 @@ defmodule Pair.MixProject do
     [
       app: :pair,
       version: "0.3.0",
-      elixir: "~> 1.16",
+      elixir: "~> 1.14",
       start_permanent: Mix.env() == :prod,
       deps: deps()
     ]
