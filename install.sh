@@ -55,6 +55,8 @@ echo -e "${GREEN}All prerequisites found.${RESET}\n"
 echo -e "${BOLD}Installing server...${RESET}"
 
 cd "$SCRIPT_DIR/pair"
+mix local.hex --force 2>&1 | tail -1
+mix local.rebar --force 2>&1 | tail -1
 mix deps.get --only prod 2>&1 | tail -1
 mix compile 2>&1 | tail -1
 echo -e "  ${GREEN}✓${RESET} Server ready"
