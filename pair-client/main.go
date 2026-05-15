@@ -21,6 +21,8 @@ import (
 
 const serverPort = "4242"
 
+var httpClient = &http.Client{Timeout: 3 * time.Second}
+
 func main() {
 	if len(os.Args) < 2 {
 		printUsage()
@@ -114,7 +116,7 @@ func startSession(args []string, connectHost, displayHost string, isRemote bool)
 
 	apiURL := fmt.Sprintf("http://%s:%s/sessions", connectHost, serverPort)
 
-	resp, err := http.Post(apiURL, "application/json", bytes.NewReader(bodyJSON))
+	resp, err := httpClient.Post(apiURL, "application/json", bytes.NewReader(bodyJSON))
 	if err != nil {
 		if !isRemote {
 			fmt.Println("Server not running - starting it now...")
@@ -123,7 +125,7 @@ func startSession(args []string, connectHost, displayHost string, isRemote bool)
 				fmt.Fprintf(os.Stderr, "Run 'pair server' manually or check Elixir installation.\n")
 				os.Exit(1)
 			}
-			resp, err = http.Post(apiURL, "application/json", bytes.NewReader(bodyJSON))
+			resp, err = httpClient.Post(apiURL, "application/json", bytes.NewReader(bodyJSON))
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "Server started but still unreachable at %s:%s\n", connectHost, serverPort)
 				os.Exit(1)
@@ -284,7 +286,7 @@ func fetchAllSessions() []session {
 }
 
 func fetchSessionsFrom(host string) []session {
-	resp, err := http.Get(fmt.Sprintf("http://%s:%s/sessions", host, serverPort))
+	resp, err := httpClient.Get(fmt.Sprintf("http://%s:%s/sessions", host, serverPort))
 	if err != nil {
 		return nil
 	}
@@ -306,7 +308,7 @@ func stop(name string) {
 
 func stopOnServer(name, host string) {
 	// Show what we're stopping
-	resp, _ := http.Get(fmt.Sprintf("http://%s:%s/session/%s", host, serverPort, name))
+	resp, _ := httpClient.Get(fmt.Sprintf("http://%s:%s/session/%s", host, serverPort, name))
 	if resp != nil && resp.StatusCode == 200 {
 		var state map[string]interface{}
 		json.NewDecoder(resp.Body).Decode(&state)
@@ -317,7 +319,7 @@ func stopOnServer(name, host string) {
 	}
 
 	req, _ := http.NewRequest("DELETE", fmt.Sprintf("http://%s:%s/session/%s", host, serverPort, name), nil)
-	_, err := http.DefaultClient.Do(req)
+	_, err := httpClient.Do(req)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
@@ -651,7 +653,7 @@ func findPairProject() string {
 func ensureServerRunning() error {
 	// Check if already running on the right IP
 	bind := serverHost() // Tailscale IP or 127.0.0.1
-	if resp, err := http.Get(fmt.Sprintf("http://%s:%s/health", bind, serverPort)); err == nil {
+	if resp, err := httpClient.Get(fmt.Sprintf("http://%s:%s/health", bind, serverPort)); err == nil {
 		resp.Body.Close()
 		return nil
 	}
@@ -677,7 +679,7 @@ func ensureServerRunning() error {
 
 	for i := 0; i < 20; i++ {
 		time.Sleep(500 * time.Millisecond)
-		if resp, err := http.Get(fmt.Sprintf("http://%s:%s/health", bind, serverPort)); err == nil {
+		if resp, err := httpClient.Get(fmt.Sprintf("http://%s:%s/health", bind, serverPort)); err == nil {
 			resp.Body.Close()
 			return nil
 		}

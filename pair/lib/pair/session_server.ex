@@ -11,7 +11,7 @@ defmodule Pair.SessionServer do
   require Logger
   defp debug?, do: System.get_env("PAIR_DEBUG") == "1"
 
-  require Logger
+  @index_html Path.expand("../../index.html", __DIR__)
 
   # ── Client API ──────────────────────────────────────────────────────
 
@@ -252,8 +252,10 @@ defmodule Pair.SessionServer do
     System.cmd("pkill", ["-f", "ttyd.*#{port}"], stderr_to_stdout: true)
 
     # Start ttyd as detached background process, bound to same interface as orchestrator
-    # fontSize=18: larger text, readable on phone. Default is 15.
-    :os.cmd(~c'ttyd -p #{port} -i #{bind} --writable --client-option fontSize=18 tmux attach -t #{session_name} > /dev/null 2>&1 &')
+    # --index: serve custom HTML with responsive font sizing and toolbar overlay (ESC / Ctrl+C)
+    index_path = escape(@index_html)
+    ttyd_cmd = "ttyd -p #{port} -i #{bind} --writable --index #{index_path} tmux attach -t #{session_name} > /dev/null 2>&1 &"
+    :os.cmd(String.to_charlist(ttyd_cmd))
 
     Process.sleep(500)
     port
