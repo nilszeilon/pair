@@ -5,181 +5,91 @@ Share it with your phone, tablet, or another computer — all seeing the same sc
 
 Works with **pi**, **Claude Code**, **Codex**, or any terminal-based coding agent.
 
-## Architecture
+## What it does
 
-Pair has two parts, both installed by `./install.sh`:
+Pair is a tiny Elixir server that wraps each agent session in a tmux window,
+served over the web via ttyd. Sessions survive disconnects, and crashed agents
+are restarted automatically.
 
-- **Server** (Elixir) — runs the agent inside tmux, serves browser access via ttyd
-- **Client** (Go) — the `pair` command you type. Talks to a server (local or remote)
-
-Your machine runs both — `pair pi` auto-starts a local server. You can also
-run the server on a remote machine and connect from anywhere.
-
----
-
-## Install
-
-**macOS:**
-
-```bash
-brew install elixir tmux ttyd golang
+```
+ pair pi ──POST──►  Pair.HTTPServer (:4242)
+                         │
+                    GenServer per session
+                         │
+                    ├─► tmux -d "pair-<id>"  ← agent runs here
+                    └─► ttyd :43XX           ← browser access
 ```
 
-**Linux (Ubuntu/Debian):**
+## Quick start
 
 ```bash
 # Prerequisites
-apt install tmux ttyd golang
+brew install elixir tmux ttyd    # macOS
+apt install tmux ttyd            # Linux (+ install Elixir separately)
 
-# Elixir 1.18 + Erlang 27 (required, Ubuntu's apt package is too old)
-curl -fsSL https://binaries2.erlang-solutions.com/ubuntu/pool/contrib/e/esl-erlang/esl-erlang_27.3-1~ubuntu~noble_amd64.deb -o /tmp/esl.deb
-dpkg -i /tmp/esl.deb
-curl -fsSL https://github.com/elixir-lang/elixir/releases/download/v1.18.3/elixir-otp-27.zip -o /tmp/elixir.zip
-unzip -qo /tmp/elixir.zip -d /usr/local/elixir
-ln -sf /usr/local/elixir/bin/elixir /usr/local/bin/elixir
-ln -sf /usr/local/elixir/bin/mix /usr/local/bin/mix
-```
-
-Optional: [Tailscale](https://tailscale.com/download) for phone access
-
-```bash
-git clone git@github.com:nilszeilon/pair.git
+# Install
+git clone https://github.com/nilszeilon/pair.git
 cd pair
 ./install.sh
-source ~/.bashrc
+
+# Start the server
+cd pair && mix pair server
 ```
 
-HTTPS clone: `git clone https://github.com/nilszeilon/pair.git`  
-zsh users: `source ~/.zshrc`
+Open `http://localhost:4242` in a browser — start a session, open the ttyd URL
+on your phone. Same session, live.
 
-That's it. `./install.sh` builds the Go client, compiles the Elixir server,
-and adds `pair` to your PATH.
+## API
 
-No need to start the server manually — `pair pi` auto-starts it and binds
-to your Tailscale IP automatically.
+```
+POST   /sessions              { root_path, agent, env, host }
+GET    /session/:id            session state
+DELETE /session/:id            stop session
+GET    /                       HTML browse page (browsers) / JSON (API clients)
+GET    /sessions               JSON session list
+GET    /health                 "ok"
+```
 
-To run the server as a daemon on a remote machine:
+Start a session with curl:
 
 ```bash
-cd pair/pair
-mix pair server
+curl -X POST http://localhost:4242/sessions \
+  -H "Content-Type: application/json" \
+  -d '{"root_path": "~", "agent": "pi"}'
 ```
 
-Then from your laptop: `pair connect <server>` and `pair remote pi`.
-
----
-
-## Usage
-
-### Work locally, follow from your phone
+## Running on a remote server
 
 ```bash
-pair pi
-pair claude
-pair aider --model gpt-4
+BIND=0.0.0.0 mix pair server
 ```
 
-Starts the server if needed, launches pi in your current directory.
-Open the printed URL on your phone — same session, live.
-
-`Ctrl+B d` to detach and leave the agent running. `Ctrl+B s` to switch between sessions.
-
-### Work on a remote server, connect from anywhere
-
-```bash
-pair connect myserver.example.com
-pair remote pi
-```
-
-Close the terminal to disconnect — the session keeps running.
-Reconnect later with `pair browse` or `pair join <name>`.
-
-Want existing code on the server? SSH in, run `pair pi` there, close the
-window. From your laptop, `pair join <name>` attaches to the same session.
-
-On the server:
-
-```bash
-ssh myserver
-cd ~/projects/myapp
-pair pi
-```
-
-On your laptop (with `pair connect` already set):
-
-```bash
-pair join myapp
-```
-
-### Managing sessions
-
-```bash
-pair list
-pair browse
-pair join <name>
-pair stop <name>
-```
-
----
+Then open `http://<server-ip>:4242` from your phone or laptop.
 
 ## Works with Tailscale
 
-If Tailscale is running, the local server binds to your Tailscale IP automatically.
-Your phone on the same tailnet can open the browser URL. Devices on the local
-network (cafe wifi) cannot — the server only listens on the Tailscale interface.
+If Tailscale is running, the server binds to your Tailscale IP automatically.
+Open the URL on any device on your tailnet — no config needed.
+Falls back to localhost if Tailscale isn't running.
 
-No configuration needed. Falls back to localhost if Tailscale isn't running.
-
-## Dragging images
-
-When connected to a remote session, the agent can't read files from your local
-machine. Just drag an image into the terminal — pair detects the paste, uploads
-the file to the server, and silently replaces the path. The agent sees
-`/tmp/pair-uploads/screenshot.png` instead of your local path.
-
-
-
-https://github.com/user-attachments/assets/48566ee3-4281-416c-abe8-62cc53ad24b9
-
-
-
----
-
-## How it works
+## Architecture
 
 ```
-                    ┌───────── Server ──────────┐
-pair pi ──POST──►   │  Pair.HTTPServer (:4242)  │
-                    │    │                       │
-                    │    ▼                       │
-                    │  GenServer per session     │
-                    │    │                       │
-                    │    ├─► tmux -d "pair-<id>" │  ← agent runs here
-                    │    └─► ttyd :43XX          │  ← browser access
-                    └────────┬───────────────────┘
-                             │
-           ┌─────────────────┼─────────────────┐
-           ▼                 ▼                  ▼
-    SSH terminal       Browser (phone)    Another SSH
-    (native PTY)       (xterm.js)        (native PTY)
+Pair.Application
+  ├─ Registry (session lookup)
+  ├─ DynamicSupervisor (session lifecycle)
+  └─ Bandit (REST API :4242)
+       └─ Pair.HTTPServer
+            └─ Pair.SessionServer (GenServer per session)
+                 ├─ tmux new-session -d -s pair-<id>
+                 ├─ ttyd -p 43XX tmux attach -t pair-<id>
+                 └─ health check every 10s → auto-restart
 ```
-
-- **tmux** — session persistence, multi-client, survives disconnects
-- **ttyd** — terminal over WebSocket, no SSH needed on your phone
-- **Health checks** — agent crashes → restarts with same conversation within 10s
 
 ## Security
 
-Pair is designed for personal use on trusted networks. Know the risks:
+Designed for personal use on trusted networks:
 
-**What protects you:**
-- Local server binds to Tailscale IP, never `0.0.0.0` — cafe wifi can't see it
-- Tailscale encrypts traffic end-to-end between your devices
-- API keys stay on the server — pair doesn't forward credentials
-
-**What doesn't:**
-- **No authentication on ttyd** — anyone on your tailnet who knows the port gets a terminal session. If a tailnet device is compromised, so is your machine.
-- **No authentication on the REST API** (:4242) — anyone on your tailnet can manage sessions.
-- **Predictable ports** — ttyd ports are deterministic (`4300 + hash % 100`). Not a secret.
-
-Planned: shared token auth for API and ttyd.
+- Binds to Tailscale IP by default, never `0.0.0.0` — cafe wifi can't see it
+- Tailscale encrypts traffic end-to-end between devices
+- **No authentication** — anyone on your tailnet can access sessions. Planned: shared token auth.

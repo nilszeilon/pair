@@ -4,10 +4,6 @@ deps/
 *.beam
 erl_crash.dump
 
-# Go
-pair-client/pair
-pair-client/pair-client
-
 # OS
 .DS_Store
 Thumbs.db
@@ -23,4 +19,3 @@ Thumbs.db
 auth.json
 settings.json
 *.pem
-pair-client/pair-client
