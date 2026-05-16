@@ -1,9 +1,14 @@
 defmodule Pair.SessionServer do
   @moduledoc """
-  Fault-tolerant pi session orchestrator.
+  Fault-tolerant agent session orchestrator.
 
-  Manages a tmux session containing a pi process. If the user disconnects,
-  pi keeps running inside tmux. If pi crashes, it's restarted automatically.
+  Manages a tmux session containing an agent process. If the user
+  disconnects, the agent keeps running inside tmux. If it crashes,
+  it's restarted automatically.
+
+  Supports two modes:
+  - Managed: pair creates the tmux session (via POST /sessions)
+  - Adopted: an existing tmux session is discovered and adopted by the scanner
   """
 
   use GenServer
@@ -20,7 +25,8 @@ defmodule Pair.SessionServer do
     root_path = Keyword.fetch!(opts, :root_path)
     env = Keyword.get(opts, :env, %{})
     agent = Keyword.get(opts, :agent, "pi")
-    GenServer.start_link(__MODULE__, {id, root_path, env, agent}, name: via(id))
+    adopt = Keyword.get(opts, :adopt, false)
+    GenServer.start_link(__MODULE__, {id, root_path, env, agent, adopt}, name: via(id))
   end
 
   def get_state(id), do: GenServer.call(via(id), :get_state)
@@ -29,44 +35,43 @@ defmodule Pair.SessionServer do
   # ── Server ──────────────────────────────────────────────────────────
 
   @impl true
-  def init({id, root_path, env, agent}) do
-    if debug?(), do: Logger.info("SessionServer.init id=#{id} root=#{root_path} env_keys=#{inspect(Map.keys(env))}")
-    session_name = "pair-#{id}"
+  def init({id, root_path, env, agent, adopt}) do
+    if debug?(), do: Logger.info("SessionServer.init id=#{id} adopt=#{adopt} root=#{root_path}")
+    session_name = if adopt, do: id, else: "pair-#{id}"
 
-    # Kill existing session with same name if any
-    System.cmd("tmux", ["kill-session", "-t", session_name], stderr_to_stdout: true)
+    unless adopt do
+      # Managed: create tmux session
+      System.cmd("tmux", ["kill-session", "-t", session_name], stderr_to_stdout: true)
 
-    # Build env exports and resolve agent binary
-    env_exports = build_env_exports(Map.delete(env, "PAIR_AGENT_BIN"))
+      env_exports = build_env_exports(Map.delete(env, "PAIR_AGENT_BIN"))
+      File.mkdir_p!(root_path)
 
-    # Ensure the working directory exists
-    File.mkdir_p!(root_path)
+      cmd =
+        if env_exports != "" do
+          "cd #{escape(root_path)} && #{env_exports} && exec #{agent}"
+        else
+          "cd #{escape(root_path)} && exec #{agent}"
+        end
+      if debug?(), do: Logger.info("Starting tmux: #{String.slice(cmd, 0, 150)}")
+      {output, status} =
+        System.cmd("tmux", [
+          "new-session", "-d", "-s", session_name,
+          "sh", "-c", cmd
+        ], stderr_to_stdout: true)
 
-    # Run whatever the user passed — no agent-specific logic
-    cmd =
-      if env_exports != "" do
-        "cd #{escape(root_path)} && #{env_exports} && exec #{agent}"
-      else
-        "cd #{escape(root_path)} && exec #{agent}"
+      if status != 0 do
+        Logger.error("tmux failed: #{String.trim(output)}")
       end
-    if debug?(), do: Logger.info("Starting tmux: #{String.slice(cmd, 0, 150)}")
-    {output, status} =
-      System.cmd("tmux", [
-        "new-session", "-d", "-s", session_name,
-        "sh", "-c", cmd
-      ], stderr_to_stdout: true)
-
-    if status != 0 do
-      Logger.error("tmux failed: #{String.trim(output)}")
     end
 
-    # Start ttyd for this session (if not already running)
+    # Start ttyd (both managed and adopted sessions)
     ttyd_port = ensure_ttyd(session_name)
 
-    # Customize tmux status bar with connection info
-    set_tmux_status(session_name, id, ttyd_port, Map.get(env, "HOST", "unknown"), root_path)
+    # Customize tmux status bar for managed sessions
+    unless adopt do
+      set_tmux_status(session_name, id, ttyd_port, Map.get(env, "HOST", "unknown"), root_path)
+    end
 
-    # Start health checker
     schedule_health_check()
 
     state = %{
@@ -74,6 +79,7 @@ defmodule Pair.SessionServer do
       root_path: root_path,
       env: env,
       agent: agent,
+      adopt: adopt,
       client_host: Map.get(env, "HOST"),
       tmux_session: session_name,
       ttyd_port: ttyd_port,
@@ -99,6 +105,7 @@ defmodule Pair.SessionServer do
         tmux_session: state.tmux_session,
         url: url,
         pi_alive: pi_alive,
+        adopted: state[:adopt] || false,
         started_at: state.started_at
       }, state}
   end
@@ -134,9 +141,9 @@ defmodule Pair.SessionServer do
   @impl true
   def terminate(reason, state) do
     Logger.info("Session #{state.id} terminating (reason: #{inspect(reason)})")
-    # Kill tmux session
-    System.cmd("tmux", ["kill-session", "-t", state.tmux_session], stderr_to_stdout: true)
-    # Kill ttyd for this port
+    unless state[:adopt] do
+      System.cmd("tmux", ["kill-session", "-t", state.tmux_session], stderr_to_stdout: true)
+    end
     System.cmd("pkill", ["-f", "ttyd.*#{state.ttyd_port}"], stderr_to_stdout: true)
     :ok
   end
