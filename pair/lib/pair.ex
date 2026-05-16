@@ -2,9 +2,11 @@ defmodule Pair do
   @moduledoc """
   Fault-tolerant, shareable coding agent sessions.
 
-  Each session runs an agent inside a tmux session, served via ttyd.
-  The GenServer monitors agent health and restarts it if it crashes.
-  Sessions survive all client disconnects — reconnect from any device.
+  Each session wraps an agent in a tmux session served via ttyd for browser
+  access. Sessions survive disconnects; health checks auto-restart crashed
+  agents. Existing tmux sessions running known agents are auto-discovered.
+
+  Start with `mix pair server` and open http://localhost:4242.
   """
 
   def list_sessions do

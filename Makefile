@@ -1,7 +1,4 @@
-.PHONY: install server test clean
-
-install:
-	cd pair && mix deps.get && mix compile
+.PHONY: server test clean
 
 server:
 	cd pair && mix deps.get && mix compile

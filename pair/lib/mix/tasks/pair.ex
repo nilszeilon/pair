@@ -1,13 +1,14 @@
 defmodule Mix.Tasks.Pair do
   @moduledoc """
-  Starts the Pair session orchestrator server.
+  Starts the Pair session orchestrator.
 
-  The primary CLI is the Go client (`pair`). See pair-client/main.go.
+  Discovers tmux sessions running agents and serves them via ttyd.
+  Open http://localhost:4242 to manage sessions in the browser.
   """
 
   use Mix.Task
 
-  @shortdoc "Start the Pair orchestrator server"
+  @shortdoc "Start the Pair session orchestrator"
 
   def run(args) do
     case args do
@@ -15,13 +16,12 @@ defmodule Mix.Tasks.Pair do
         {:ok, _} = Application.ensure_all_started(:pair)
         bind = System.get_env("BIND", "127.0.0.1")
         port = System.get_env("PAIR_PORT", "4242")
-        IO.puts("Orchestrator running at http://#{bind}:#{port}")
-        IO.puts("Use 'pair pi' from another terminal.")
+        IO.puts("Pair orchestrator → http://#{bind}:#{port}")
+        IO.puts("Open in browser to manage sessions, or POST /sessions via curl.")
         Process.sleep(:infinity)
 
       _ ->
         IO.puts("Usage: mix pair server")
-        IO.puts("Use the Go client (`pair`) for session management.")
     end
   end
 end
