@@ -210,7 +210,7 @@ defmodule Pair.HTTPServer do
         margin-bottom: 28px;
       }
       .new-session h2 { font-size: 1.05rem; margin-bottom: 12px; color: #aaa; }
-      .new-session form { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+      .new-session form { display: flex; flex-direction: column; gap: 10px; }
       .new-session .field { display: flex; flex-direction: column; gap: 4px; }
       .new-session label { font-size: 0.78rem; color: #999; }
       .new-session input {
@@ -221,8 +221,10 @@ defmodule Pair.HTTPServer do
         padding: 8px 12px;
         font-size: 0.9rem;
         outline: none;
+        width: 100%;
       }
       .new-session input:focus { border-color: #6cf; }
+      .new-session .form-actions { display: flex; gap: 8px; align-items: center; }
       .new-session button {
         background: #365;
         border: 1px solid #4a7;
@@ -232,8 +234,13 @@ defmodule Pair.HTTPServer do
         font-size: 0.9rem;
         cursor: pointer;
         font-weight: 600;
+        white-space: nowrap;
       }
       .new-session button:hover { background: #3a7; }
+      .new-session button.secondary {
+        background: #333; border-color: #555; color: #ccc;
+      }
+      .new-session button.secondary:hover { background: #444; }
 
       .session-list { display: flex; flex-direction: column; gap: 10px; }
       .session-card {
@@ -288,8 +295,6 @@ defmodule Pair.HTTPServer do
 
       @media (max-width: 500px) {
         body { padding: 14px; }
-        .new-session form { flex-direction: column; }
-        .new-session input { width: 100% !important; }
         .session-card { flex-direction: column; align-items: flex-start; }
       }
 
@@ -352,16 +357,18 @@ defmodule Pair.HTTPServer do
       <form id="new-session-form">
         <div class="field">
           <label for="agent">Agent</label>
-          <input id="agent" name="agent" value="pi" placeholder="pi" style="width: 120px;">
+          <input id="agent" name="agent" value="pi" placeholder="pi">
         </div>
-        <div class="field" style="flex: 1; min-width: 200px;">
+        <div class="field">
           <label for="root_path">Project path</label>
           <div style="display: flex; gap: 6px;">
             <input id="root_path" name="root_path" value="~" placeholder="~/dev/myproject" style="flex: 1;">
-            <button type="button" id="browse-btn" style="background:#333;border-color:#555;color:#ccc;padding:8px 12px;cursor:pointer;">Browse</button>
+            <button type="button" id="browse-btn" class="secondary">Browse</button>
           </div>
         </div>
-        <button type="submit">Start</button>
+        <div class="form-actions">
+          <button type="submit">Start</button>
+        </div>
       </form>
     </div>
 
