@@ -233,8 +233,8 @@ defmodule Pair.SessionServer do
     left = " #[fg=cyan,bold]#{folder} #[fg=default]"
     right = " #[fg=green]#{url} #[fg=default] "
 
-    # Resize to largest connected client (desktop > phone > detached default)
-    System.cmd("tmux", ["set-window-option", "-t", session_name, "window-size", "largest"], stderr_to_stdout: true)
+    # Resize to most recently active client so phone/laptop each get correct size
+    System.cmd("tmux", ["set-window-option", "-t", session_name, "window-size", "latest"], stderr_to_stdout: true)
     System.cmd("tmux", ["set-window-option", "-t", session_name, "aggressive-resize", "on"], stderr_to_stdout: true)
 
     System.cmd("tmux", ["set-option", "-t", session_name, "status-left", left], stderr_to_stdout: true)
