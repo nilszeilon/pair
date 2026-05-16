@@ -34,16 +34,6 @@ if ! command -v ttyd &>/dev/null; then
     MISSING=1
 fi
 
-if ! command -v node &>/dev/null; then
-    echo -e "  ${YELLOW}!${RESET} Node.js — install for pi/coding agents"
-    echo    "    curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && apt install -y nodejs"
-fi
-
-if ! command -v pi &>/dev/null && command -v npm &>/dev/null; then
-    echo -e "  ${YELLOW}!${RESET} Installing pi coding agent..."
-    npm install -g @mariozechner/pi-coding-agent 2>&1 | tail -1
-fi
-
 if [ -n "$MISSING" ]; then
     echo -e "\n${RED}Install missing prerequisites and re-run.${RESET}"
     exit 1

@@ -6,6 +6,7 @@ erl_crash.dump
 
 # Go
 pair-client/pair
+pair-client/pair-client
 
 # OS
 .DS_Store
@@ -14,6 +15,7 @@ Thumbs.db
 # IDE
 .idea/
 .vscode/
+.claude/
 *.swp
 *.swo
 
