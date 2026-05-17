@@ -5,139 +5,82 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Pair — Sessions</title>
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    background: #1a1a1a; color: #e0e0e0;
-    padding: 24px; max-width: 800px; margin: 0 auto;
-  }
-  h1 { font-size: 1.6rem; margin-bottom: 8px; }
-  .subtitle { color: #888; font-size: 0.85rem; margin-bottom: 24px; }
-  .new-session {
-    background: #252525; border: 1px solid #333; border-radius: 10px;
-    padding: 18px 20px; margin-bottom: 28px;
-  }
-  .new-session h2 { font-size: 1.05rem; margin-bottom: 12px; color: #aaa; }
-  .new-session form { display: flex; flex-direction: column; gap: 10px; }
-  .new-session .field { display: flex; flex-direction: column; gap: 4px; }
-  .new-session label { font-size: 0.78rem; color: #999; }
-  .new-session input {
-    background: #1a1a1a; border: 1px solid #444; border-radius: 6px;
-    color: #e0e0e0; padding: 8px 12px; font-size: 0.9rem; outline: none;
-  }
-  .new-session input:focus { border-color: #6cf; }
-  .new-session button {
-    background: #365; border: 1px solid #4a7; color: #d0ffd0;
-    border-radius: 6px; padding: 8px 18px; font-size: 0.9rem;
-    cursor: pointer; font-weight: 600;
-  }
-  .session-list { display: flex; flex-direction: column; gap: 10px; }
-  .session-card {
-    background: #252525; border: 1px solid #333; border-radius: 10px;
-    padding: 16px 18px; display: flex; justify-content: space-between;
-    align-items: center; gap: 12px; flex-wrap: wrap;
-  }
-  .session-card .info { flex: 1; min-width: 0; }
-  .session-card .name { font-weight: 700; font-size: 1rem; margin-bottom: 3px; }
-  .session-card .meta { font-size: 0.78rem; color: #888; display: flex; gap: 12px; flex-wrap: wrap; }
-  .status { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
-  .status.alive { background: #4c6; box-shadow: 0 0 6px #4c6; }
-  .status.dead { background: #c44; }
-  .session-card a {
-    color: #6cf; text-decoration: none; font-size: 0.85rem; font-weight: 600;
-    padding: 6px 14px; border: 1px solid #356; border-radius: 6px; background: #1a2a2a;
-  }
-  .session-card a:hover { background: #1e3a3a; border-color: #6cf; }
-  .empty { text-align: center; color: #666; padding: 40px 0; font-size: 0.95rem; }
-  .footer { margin-top: 32px; text-align: center; font-size: 0.72rem; color: #555; }
-  @media (max-width: 500px) { body { padding: 14px; } }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#1a1a1a;color:#e0e0e0;padding:24px;max-width:800px;margin:0 auto}
+  h1{font-size:1.4rem;margin-bottom:24px;color:#aaa}
+  .new-session{background:#252525;border:1px solid #333;border-radius:8px;padding:14px 16px;margin-bottom:24px;display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+  .new-session .field{display:flex;flex-direction:column;gap:3px}
+  .new-session label{font-size:0.7rem;color:#999}
+  .new-session input{background:#1a1a1a;border:1px solid #444;border-radius:6px;color:#e0e0e0;padding:6px 10px;font-size:0.85rem;outline:none;width:140px}
+  .new-session input:focus{border-color:#6cf}
+  .new-session button{background:#365;border:1px solid #4a7;color:#d0ffd0;border-radius:6px;padding:6px 16px;font-size:0.85rem;cursor:pointer;font-weight:600}
+  .session-list{display:flex;flex-direction:column;gap:8px}
+  .session-card{background:#252525;border:1px solid #333;border-radius:8px;padding:12px 16px;display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .session-card .info{flex:1;min-width:0}
+  .session-card .name{font-weight:700;font-size:0.95rem;margin-bottom:2px}
+  .session-card .meta{font-size:0.72rem;color:#888}
+  .status{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:4px}
+  .status.alive{background:#4c6;box-shadow:0 0 6px #4c6}
+  .session-card a{color:#6cf;text-decoration:none;font-size:0.8rem;font-weight:600;white-space:nowrap}
+  .empty{text-align:center;color:#666;padding:40px 0;font-size:0.9rem}
+  .footer{margin-top:24px;text-align:center;font-size:0.65rem;color:#555}
+  @media(max-width:500px){body{padding:14px}.new-session input{width:120px}}
 </style>
 </head>
 <body>
-<h1>Pair Sessions</h1>
-<p class="subtitle" id="hostname"></p>
+<h1>Sessions</h1>
 
 <div class="new-session">
-  <h2>+ New Session</h2>
-  <form id="new-session-form">
-    <div class="field">
-      <label for="agent">Agent</label>
-      <input id="agent" name="agent" value="pi" placeholder="pi">
-    </div>
-    <div class="field">
-      <label for="root_path">Path</label>
-      <input id="root_path" name="root_path" value="~" placeholder="~/dev/myproject">
-    </div>
-    <button type="submit">Start</button>
-  </form>
+  <div class="field">
+    <label for="agent">Agent</label>
+    <input id="agent" value="pi" placeholder="pi">
+  </div>
+  <div class="field">
+    <label for="root_path">Path</label>
+    <input id="root_path" value="~" placeholder="~/dev/myproject">
+  </div>
+  <button id="start-btn">Start</button>
 </div>
 
 <div class="session-list" id="session-list"></div>
-<p class="footer">Auto-refreshes every 2s</p>
+<p class="footer">Refreshes every 2s</p>
 
 <script>
-  var host = window.location.hostname;
-  document.getElementById('hostname').textContent = 'Active sessions on ' + host;
-
-  function esc(s) {
-    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-  }
-
-  function render() {
-    fetch('/sessions')
-      .then(function(r) { return r.json(); })
-      .then(function(sessions) {
-        var list = document.getElementById('session-list');
-        if (sessions.length === 0) {
-          list.innerHTML = '<div class="empty"><p>No active sessions.</p><p>Run pair pi in a terminal, or start one above.</p></div>';
-          return;
-        }
-        list.innerHTML = sessions.map(function(s) {
-          var alive = s.pi_alive !== false;
-          var cls = alive ? 'alive' : 'dead';
-          var label = alive ? 'live' : 'stopped';
-          var adopted = s.adopted ? 'adopted' : 'managed';
-          var started = s.started_at ? new Date(s.started_at).toLocaleString() : '-';
-          return '<div class="session-card">' +
-            '<div class="info">' +
-              '<div class="name">' + esc(s.id) + '</div>' +
-              '<div class="meta">' +
-                '<span><span class="status ' + cls + '"></span>' + label + '</span>' +
-                '<span>agent: ' + esc(s.agent || '?') + '</span>' +
-                '<span>' + adopted + '</span>' +
-                '<span>started: ' + started + '</span>' +
-              '</div>' +
-            '</div>' +
-            '<a href="' + esc(s.url) + '" target="_blank">Open &#8594;</a>' +
-          '</div>';
-        }).join('');
-      });
-  }
-
-  var fastPoll = null;
-
-  document.getElementById('new-session-form').addEventListener('submit', function(e) {
-    e.preventDefault();
-    var agent = document.getElementById('agent').value || 'pi';
-    var root_path = document.getElementById('root_path').value || '~';
-    fetch('/sessions', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ root_path: root_path, agent: agent })
-    }).then(function() {
-      render();
-      // Poll every 500ms for 10s until scanner adopts the session
-      if (fastPoll) clearInterval(fastPoll);
-      var tries = 0;
-      fastPoll = setInterval(function() {
-        render();
-        if (++tries > 20) clearInterval(fastPoll);
-      }, 500);
-    });
+function render() {
+  fetch('/sessions').then(r => r.json()).then(sessions => {
+    var list = document.getElementById('session-list');
+    if (!sessions.length) {
+      list.innerHTML = '<div class="empty">No active sessions.<br>Run pair &lt;agent&gt; in a terminal.</div>';
+      return;
+    }
+    list.innerHTML = sessions.map(s => {
+      var alive = s.pi_alive !== false;
+      return '<div class="session-card">' +
+        '<div class="info">' +
+          '<div class="name">' + esc(s.id) + '</div>' +
+          '<div class="meta">' +
+            '<span class="status ' + (alive ? 'alive' : '') + '"></span>' +
+            (alive ? 'live' : 'stopped') +
+            ' · ' + esc(s.agent) +
+            ' · ' + (s.adopted ? 'adopted' : 'managed') +
+          '</div>' +
+        '</div>' +
+        '<a href="' + esc(s.url) + '" target="_blank">Open →</a>' +
+      '</div>';
+    }).join('');
   });
+}
 
-  render();
-  setInterval(render, 2000);
+function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+
+document.getElementById('start-btn').addEventListener('click', function() {
+  var agent = document.getElementById('agent').value || 'pi';
+  var root_path = document.getElementById('root_path').value || '~';
+  fetch('/sessions', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({root_path,agent})}).then(render);
+});
+
+render();
+setInterval(render, 2000);
 </script>
 </body>
 </html>
