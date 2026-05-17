@@ -246,27 +246,33 @@ func (s *Server) healthCheck(sess *Session) {
 // ── Scanner ──────────────────────────────────────────────────────────
 
 func (s *Server) scanner() {
+	s.scanOnce()
+
 	ticker := time.NewTicker(10 * time.Second)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		sessions := listPairSessions()
-		s.mu.RLock()
-		managed := make(map[string]bool)
-		for id := range s.sessions {
-			managed[id] = true
-		}
-		s.mu.RUnlock()
+		s.scanOnce()
+	}
+}
 
-		for _, si := range sessions {
-			if managed[si.name] {
-				continue
-			}
-			if !paneAlive(si.name) {
-				continue
-			}
-			s.startSession(si.name, si.path, si.command, true)
+func (s *Server) scanOnce() {
+	sessions := listPairSessions()
+	s.mu.RLock()
+	managed := make(map[string]bool)
+	for id := range s.sessions {
+		managed[id] = true
+	}
+	s.mu.RUnlock()
+
+	for _, si := range sessions {
+		if managed[si.name] {
+			continue
 		}
+		if !paneAlive(si.name) {
+			continue
+		}
+		s.startSession(si.name, si.path, si.command, true)
 	}
 }
 
