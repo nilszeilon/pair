@@ -12,7 +12,6 @@ defmodule Pair.Application do
     children = [
       {Registry, keys: :unique, name: Pair.SessionRegistry},
       {DynamicSupervisor, strategy: :one_for_one, name: Pair.SessionSupervisor},
-      {Pair.Counter, []},
       {Pair.SessionScanner, []},
       {Bandit, plug: Pair.HTTPServer, scheme: :http, port: port, ip: parse_ip(bind)}
     ]

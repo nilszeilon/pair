@@ -44,7 +44,7 @@ defmodule Pair.SessionScanner do
         if debug?(), do: Logger.debug("Scanner adopting #{name} (#{agent} in #{path})")
         DynamicSupervisor.start_child(
           Pair.SessionSupervisor,
-          {Pair.SessionServer, id: name, root_path: path, env: %{}, agent: agent, adopt: true}
+          {Pair.SessionServer, id: name, root_path: path, agent: agent, adopt: true}
         )
       end
     end)

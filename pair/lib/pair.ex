@@ -9,8 +9,4 @@ defmodule Pair do
   Start with `mix pair server`, create sessions with `pair pi`.
   Open http://localhost:4242 for the dashboard.
   """
-
-  def list_sessions do
-    Registry.select(Pair.SessionRegistry, [{{:"$1", :_, :_}, [], [:"$1"]}])
-  end
 end

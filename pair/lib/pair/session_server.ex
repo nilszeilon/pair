@@ -24,10 +24,9 @@ defmodule Pair.SessionServer do
   def start_link(opts) do
     id = Keyword.fetch!(opts, :id)
     root_path = Keyword.fetch!(opts, :root_path)
-    env = Keyword.get(opts, :env, %{})
     agent = Keyword.get(opts, :agent, "pi")
     adopt = Keyword.get(opts, :adopt, false)
-    GenServer.start_link(__MODULE__, {id, root_path, env, agent, adopt}, name: via(id))
+    GenServer.start_link(__MODULE__, {id, root_path, agent, adopt}, name: via(id))
   end
 
   def get_state(id), do: GenServer.call(via(id), :get_state)
@@ -36,24 +35,17 @@ defmodule Pair.SessionServer do
   # ── Server ──────────────────────────────────────────────────────────
 
   @impl true
-  def init({id, root_path, env, agent, adopt}) do
+  def init({id, root_path, agent, adopt}) do
     if debug?(), do: Logger.info("SessionServer.init id=#{id} adopt=#{adopt} root=#{root_path}")
     session_name = id
 
     unless adopt do
       # Managed: create tmux session on pair socket
       tmux(["kill-session", "-t", session_name])
-
-      env_exports = build_env_exports(Map.delete(env, "PAIR_AGENT_BIN"))
       File.mkdir_p!(root_path)
 
-      cmd =
-        if env_exports != "" do
-          "cd #{escape(root_path)} && #{env_exports} && exec #{agent}"
-        else
-          "cd #{escape(root_path)} && exec #{agent}"
-        end
-      if debug?(), do: Logger.info("Starting tmux: #{String.slice(cmd, 0, 150)}")
+      cmd = "cd #{escape(root_path)} && exec #{agent}"
+      if debug?(), do: Logger.info("Starting tmux: #{cmd}")
       {output, status} =
         tmux(["new-session", "-d", "-s", session_name, "sh", "-c", cmd])
 
@@ -73,10 +65,8 @@ defmodule Pair.SessionServer do
     state = %{
       id: id,
       root_path: root_path,
-      env: env,
       agent: agent,
       adopt: adopt,
-      client_host: Map.get(env, "HOST"),
       tmux_session: session_name,
       ttyd_port: ttyd_port,
       started_at: DateTime.utc_now() |> DateTime.to_iso8601()
@@ -89,8 +79,7 @@ defmodule Pair.SessionServer do
   def handle_call(:get_state, _from, state) do
     pi_alive = pi_running?(state.tmux_session)
     bind = Application.get_env(:pair, :bind, "127.0.0.1")
-    host = state[:client_host] || resolve_host(bind)
-    url = "http://#{host}:#{state.ttyd_port}"
+    url = "http://#{bind}:#{state.ttyd_port}"
 
     {:reply,
       %{
@@ -153,29 +142,6 @@ defmodule Pair.SessionServer do
   defp via(id), do: {:via, Registry, {Pair.SessionRegistry, id}}
 
   defp escape(path), do: String.replace(path, "'", "'\\''")
-
-  defp server_hostname do
-    {:ok, hostname} = :inet.gethostname()
-    List.to_string(hostname)
-  rescue
-    _ -> "localhost"
-  end
-
-  defp resolve_host(bind) do
-    cond do
-      host = System.get_env("PAIR_HOST") -> host
-      bind == "0.0.0.0" -> server_hostname()
-      true -> bind
-    end
-  end
-
-  defp build_env_exports(env) do
-    env
-    |> Enum.flat_map(fn {k, v} ->
-      ["export #{k}='#{escape(v)}'"]
-    end)
-    |> Enum.join("; ")
-  end
 
   defp pane_status(session) do
     format = ~S(#{pane_dead} #{pane_dead_status} #{pane_pid})

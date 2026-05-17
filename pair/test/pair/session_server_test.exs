@@ -20,7 +20,7 @@ defmodule Pair.SessionServerTest do
       {:ok, _pid} =
         DynamicSupervisor.start_child(
           Pair.SessionSupervisor,
-          {SessionServer, id: id, root_path: root, env: %{}, agent: "echo"}
+          {SessionServer, id: id, root_path: root, agent: "echo"}
         )
 
       assert File.dir?(root)
@@ -35,7 +35,7 @@ defmodule Pair.SessionServerTest do
       {:ok, _pid} =
         DynamicSupervisor.start_child(
           Pair.SessionSupervisor,
-          {SessionServer, id: id, root_path: root, env: %{}, agent: "echo"}
+          {SessionServer, id: id, root_path: root, agent: "echo"}
         )
 
       state = SessionServer.get_state(id)
@@ -51,7 +51,7 @@ defmodule Pair.SessionServerTest do
       {:ok, _pid} =
         DynamicSupervisor.start_child(
           Pair.SessionSupervisor,
-          {SessionServer, id: id, root_path: root, env: %{}, agent: "echo"}
+          {SessionServer, id: id, root_path: root, agent: "echo"}
         )
 
       assert File.dir?(root)
@@ -66,7 +66,7 @@ defmodule Pair.SessionServerTest do
       {:ok, _pid} =
         DynamicSupervisor.start_child(
           Pair.SessionSupervisor,
-          {SessionServer, id: id, root_path: root, env: %{}, agent: "echo"}
+          {SessionServer, id: id, root_path: root, agent: "echo"}
         )
 
       state = SessionServer.get_state(id)
@@ -95,7 +95,7 @@ defmodule Pair.SessionServerTest do
       {:ok, _pid} =
         DynamicSupervisor.start_child(
           Pair.SessionSupervisor,
-          {SessionServer, id: id, root_path: root, env: %{}, agent: "echo"}
+          {SessionServer, id: id, root_path: root, agent: "echo"}
         )
 
       assert File.dir?(root)
@@ -112,13 +112,13 @@ defmodule Pair.SessionServerTest do
       {:ok, _pid} =
         DynamicSupervisor.start_child(
           Pair.SessionSupervisor,
-          {SessionServer, id: id, root_path: root, env: %{}, agent: "echo"}
+          {SessionServer, id: id, root_path: root, agent: "echo"}
         )
 
       result =
         DynamicSupervisor.start_child(
           Pair.SessionSupervisor,
-          {SessionServer, id: id, root_path: root, env: %{}, agent: "echo"}
+          {SessionServer, id: id, root_path: root, agent: "echo"}
         )
 
       assert {:error, {:already_started, _}} = result

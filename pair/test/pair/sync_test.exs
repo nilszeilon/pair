@@ -14,7 +14,7 @@ defmodule Pair.SyncTest do
     {:ok, _pid} =
       DynamicSupervisor.start_child(
         Pair.SessionSupervisor,
-        {SessionServer, id: id, root_path: remote_dir, env: %{}, agent: "echo"}
+        {SessionServer, id: id, root_path: remote_dir, agent: "echo"}
       )
 
     state = SessionServer.get_state(id)
@@ -41,7 +41,7 @@ defmodule Pair.SyncTest do
     {:ok, _pid} =
       DynamicSupervisor.start_child(
         Pair.SessionSupervisor,
-        {SessionServer, id: id, root_path: tmp, env: %{}, agent: "echo"}
+        {SessionServer, id: id, root_path: tmp, agent: "echo"}
       )
 
     state = SessionServer.get_state(id)
