@@ -385,6 +385,50 @@ func tailscaleIP() string {
 	return ""
 }
 
+func ensureServer() {
+	bind := os.Getenv("BIND")
+	if bind == "" {
+		if ip := tailscaleIP(); ip != "" {
+			bind = ip
+		} else {
+			bind = "127.0.0.1"
+		}
+	}
+	port := 4242
+	if p := os.Getenv("PAIR_PORT"); p != "" {
+		if v, err := strconv.Atoi(p); err == nil {
+			port = v
+		}
+	}
+
+	// Check if server is already running
+	resp, err := http.Get(fmt.Sprintf("http://%s:%d/health", bind, port))
+	if err == nil {
+		resp.Body.Close()
+		return
+	}
+
+	// Start server in background
+	exe, _ := os.Executable()
+	cmd := exec.Command(exe, "server")
+	cmd.Env = os.Environ()
+	cmd.Start()
+
+	// Wait for it to be ready
+	for i := 0; i < 20; i++ {
+		time.Sleep(300 * time.Millisecond)
+		resp, err := http.Get(fmt.Sprintf("http://%s:%d/health", bind, port))
+		if err == nil {
+			resp.Body.Close()
+			fmt.Printf("Pair server started → http://%s:%d\n", bind, port)
+			return
+		}
+	}
+
+	fmt.Fprintf(os.Stderr, "Server not running. Start it with: pair server\n")
+	os.Exit(1)
+}
+
 // ── CLI ──────────────────────────────────────────────────────────────
 
 func printUsage() {
@@ -404,6 +448,9 @@ func cliSession(args []string) {
 	if len(args) > 1 {
 		name = args[1]
 	}
+
+	// Ensure the server is running
+	ensureServer()
 
 	if name == "" {
 		// Auto-name: agent-N
