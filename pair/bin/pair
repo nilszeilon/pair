@@ -37,8 +37,4 @@ tmux -L pair new-session -d -s "$NAME" "cd $DIR && exec $AGENT" 2>/dev/null || {
 }
 
 # Attach to it
-if [ -n "$TMUX" ]; then
-  tmux -L pair switch-client -t "$NAME" 2>/dev/null
-else
-  exec tmux -L pair attach -t "$NAME"
-fi
+exec tmux -L pair attach -t "$NAME"
