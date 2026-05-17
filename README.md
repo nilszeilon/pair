@@ -1,62 +1,74 @@
 # pair
 
-Give every agent session a browser-accessible terminal. Open it on your phone,
-tablet, or another computer — all seeing the same screen.
+Run a coding agent in a terminal session that stays alive when you disconnect.
+Open it on your phone, tablet, or another computer — all seeing the same screen.
 
 Works with **pi**, **Claude Code**, **Codex**, or any terminal-based agent.
 
-## What it does
+## How it works
 
-Pair runs its own tmux server and exposes every session as a web terminal via
-[ttyd](https://github.com/tsl0922/ttyd). Sessions are locked down (no splits,
-no status bar) and auto-restart on crash.
+Pair runs its own tmux server and exposes every session as a web terminal.
+It binds to your [Tailscale](https://tailscale.com) IP automatically, so any
+device on your tailnet can open the session URL. No ports to forward, no
+`0.0.0.0` bind, no cafe wifi exposure.
 
 ```
   pair pi                    ← create and attach
        │
        ▼
-  tmux -L pair session       ← pair's own socket, invisible to your tmux
+  tmux -L pair session       ← pair's own tmux server
        │
        ▼  auto-discovered
   Pair.HTTPServer (:4242)    ← dashboard + REST API
        │
        ▼
-  ttyd :43XX                 ← browser terminal for your phone
+  ttyd :43XX                 ← browser terminal → open on any tailnet device
+```
+
+## Requirements
+
+- **Elixir** 1.14+
+- **tmux** — session persistence
+- **ttyd** — terminal over WebSocket
+- **Tailscale** — network access for your other devices
+
+```bash
+# macOS
+brew install elixir tmux ttyd
+brew install --cask tailscale && tailscale up
+
+# Linux
+apt install tmux ttyd
+curl -fsSL https://tailscale.com/install.sh | sh && tailscale up
+# (+ install Elixir 1.14+ separately)
 ```
 
 ## Quick start
 
 ```bash
-# Prerequisites
-brew install elixir tmux ttyd    # macOS
-apt install tmux ttyd            # Linux (+ install Elixir 1.14+)
-
-# Install
 git clone https://github.com/nilszeilon/pair.git
 cd pair
 ./install.sh
-
-# Start
 mix pair server
 ```
 
 In another terminal:
 
 ```bash
-pair pi                    # pi in current directory
-pair claude                # claude in current directory
-pair pi myproject          # named session "myproject"
+pair pi                    # pi in cwd → auto-named "pi-1"
+pair claude                # claude in cwd → "claude-1"
+pair pi myproject          # named "myproject"
 ```
 
-Open `http://localhost:4242` — all sessions appear in the dashboard. Open any
-ttyd URL on your phone. Same session, live.
+Open the dashboard URL printed by the server (it uses your Tailscale IP).
+Tap any session's ttyd link on your phone — same session, live.
 
 ## Usage
 
 ```bash
-pair                  # pi in cwd (default)
-pair claude           # any agent in cwd
-pair pi myproject     # named session "myproject"
+pair                  # pi in cwd (default) → "pi-2"
+pair claude           # any agent → "claude-1"
+pair pi myproject     # custom name
 pair "pi --model gpt" # agent with arguments (quote it)
 ```
 
@@ -64,37 +76,12 @@ Sessions are locked down: no `C-b` prefix, no splits, no status bar. The
 terminal is clean and single-purpose. Agent crashes (non-zero exit) trigger
 an automatic restart. Clean exits (Ctrl+D, `exit`) stop the session.
 
-**Under the hood:** `pair` is a thin wrapper around `tmux -L pair`. You can
-always use tmux directly:
+**Under the hood:** `pair` wraps `tmux -L pair`. You can use tmux directly:
 
 ```bash
 tmux -L pair ls                    # list pair sessions
 tmux -L pair kill-session -t name  # stop one
 ```
-
-## API
-
-```
-GET    /                       HTML dashboard (browsers) / JSON (API clients)
-GET    /sessions               JSON session list
-POST   /sessions               { root_path, agent }
-GET    /session/:id            session state
-DELETE /session/:id            stop session
-GET    /health                 "ok"
-```
-
-## Running on a remote server
-
-```bash
-BIND=0.0.0.0 mix pair server
-```
-
-Open `http://<server-ip>:4242` from any device.
-
-## Works with Tailscale
-
-If Tailscale is running, the server binds to your Tailscale IP automatically
-— no `BIND` needed. Open the URL on any device on your tailnet.
 
 ## Architecture
 
@@ -112,11 +99,29 @@ Pair.Application
                  └─ health check every 10s → crash recovery
 ```
 
+## API
+
+```
+GET    /                       dashboard HTML
+GET    /sessions               JSON session list
+POST   /sessions               { root_path, agent }
+GET    /session/:id            session state
+DELETE /session/:id            stop session
+GET    /health                 "ok"
+```
+
+## Running without Tailscale
+
+If Tailscale isn't running, the server falls back to `127.0.0.1` — accessible
+only from the local machine. To share on a local network, start with:
+
+```bash
+BIND=0.0.0.0 mix pair server
+```
+
 ## Security
 
-Designed for personal use on trusted networks:
-
-- Binds to Tailscale IP by default, never `0.0.0.0` — cafe wifi can't see it
-- Tailscale encrypts traffic end-to-end
-- **No authentication** — anyone on your tailnet can access sessions
-  (shared token auth planned)
+Pair binds to your Tailscale IP — only devices on your tailnet can connect.
+Traffic is encrypted end-to-end by Tailscale. No authentication on the REST
+API or ttyd ports — treat your tailnet as the security boundary. Shared token
+auth planned.
