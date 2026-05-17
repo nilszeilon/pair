@@ -3,8 +3,8 @@ defmodule Pair.SessionServer do
   Fault-tolerant agent session orchestrator.
 
   Manages a tmux session on pair's own socket (`tmux -L pair`). If the
-  user disconnects, the agent keeps running inside tmux. If it crashes,
-  it's restarted automatically.
+  user disconnects, the agent keeps running inside tmux. When the agent
+  exits, the session is removed.
 
   Supports two modes:
   - Managed: pair creates the tmux session (via POST /sessions)
