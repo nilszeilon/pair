@@ -10,112 +10,78 @@ Works with **pi**, **Claude Code**, **Codex**, or any terminal-based agent.
 Pair runs its own tmux server and exposes every session as a web terminal via
 [ttyd](https://github.com/tsl0922/ttyd). It binds to your
 [Tailscale](https://tailscale.com) IP automatically, so any device on your
-tailnet can open the session URL. No ports to forward, no `0.0.0.0` bind.
+tailnet can open the session URL.
 
-Single Go binary. Zero dependencies beyond the Go standard library.
+Single Go binary. Zero dependencies beyond the standard library.
 
-```
-  pair pi                    ← create and attach
-       │
-       ▼
-  tmux -L pair session       ← pair's own tmux server
-       │
-       ▼  auto-discovered
-  HTTP server (:4242)        ← dashboard + REST API
-       │
-       ▼
-  ttyd :43XX                 ← browser terminal → open on any tailnet device
-```
-
-## Requirements
-
-- **Go** 1.21+
-- **tmux**
-- **ttyd**
-- **Tailscale**
+## Install
 
 ```bash
 # macOS
 brew install go tmux ttyd
 brew install --cask tailscale && tailscale up
 
-# Linux
-apt install golang tmux ttyd
-curl -fsSL https://tailscale.com/install.sh | sh && tailscale up
+# Ubuntu
+sudo apt install -y golang tmux ttyd
+curl -fsSL https://tailscale.com/install.sh | sh && sudo tailscale up
 ```
 
-## Install
+Then:
 
 ```bash
 go install github.com/nilszeilon/pair@latest
 ```
 
 The binary lands in `~/go/bin/pair`. Make sure `~/go/bin` is on your `PATH`
-(standard Go setup).
+(standard Go setup — add `export PATH=$HOME/go/bin:$PATH` to `~/.bashrc`).
 
 ## Usage
 
 ```bash
-pair server              # start the orchestrator
+pair pi                  # auto-starts server, creates session, attaches you
 ```
 
-In another terminal:
+That's it. The server auto-starts in the background on first use.
+Open the dashboard URL (it uses your Tailscale IP) on your phone.
 
 ```bash
-pair pi                  # pi in cwd → auto-named "pi-1"
-pair claude              # claude in cwd → "claude-1"
-pair pi myproject        # named "myproject"
+pair claude              # any agent
+pair pi myproject        # named session
 pair "pi --model gpt"    # agent with arguments (quote it)
+pair server &            # start server explicitly in background
 ```
 
-Open the dashboard URL printed by the server (it uses your Tailscale IP).
-Tap any session's ttyd link on your phone — same session, live.
+Sessions are locked down — no `C-b` prefix, no splits, no status bar.
+When the agent exits, the session is fully cleaned up and you return
+to your shell or tmux pane.
 
-Sessions are locked down: no `C-b` prefix, no splits, no status bar.
-When the agent exits, the session is fully cleaned up.
+## Under the hood
 
-**Background the server** so it survives your terminal:
-
-```bash
-pair server &
-# or: tmux new -d -s paird pair server
-```
-
-**Under the hood:** `pair` wraps `tmux -L pair`. You can use tmux directly:
+`pair` wraps `tmux -L pair` — its own isolated tmux server. Your regular
+tmux sessions are untouched.
 
 ```bash
 tmux -L pair ls                    # list pair sessions
-tmux -L pair kill-session -t name  # stop one
+tmux -L pair kill-session -t name  # stop one manually
 ```
 
 ## Architecture
 
 ```
-Server
+Server (568 lines of Go)
   ├─ in-memory session registry
-  ├─ scanner goroutine     discovers sessions on tmux -L pair (every 10s)
+  ├─ scanner goroutine     discovers sessions on tmux -L pair
   └─ HTTP (:4242)
        ├─ GET  /             dashboard
        ├─ GET  /sessions     JSON session list
-       ├─ POST /sessions     create session
+       ├─ POST /sessions     create session → returns ID
        ├─ GET  /session/:id  session state
        └─ DELETE /session/:id stop session
 
 Per session:
   ├─ tmux -L pair session  (prefix None, status off)
   ├─ ttyd on port 4300–4399
-  └─ health check goroutine (every 10s → remove dead sessions)
-```
-
-## API
-
-```
-GET    /                       HTML dashboard
-GET    /sessions               JSON session list
-POST   /sessions               { root_path, agent }
-GET    /session/:id            session state
-DELETE /session/:id            stop session
-GET    /health                 "ok"
+  └─ health check every 10s → removes dead sessions
 ```
 
 ## Running without Tailscale
@@ -127,6 +93,6 @@ BIND=127.0.0.1 pair server     # localhost only
 
 ## Security
 
-Pair binds to your Tailscale IP — only devices on your tailnet can connect.
-Traffic is encrypted end-to-end by Tailscale. No authentication — treat your
-tailnet as the security boundary.
+Pair binds to your Tailscale IP by default — only devices on your tailnet
+can connect. Traffic is encrypted end-to-end by Tailscale. No authentication
+on the API or ttyd ports. Treat your tailnet as the security boundary.
