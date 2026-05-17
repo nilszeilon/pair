@@ -39,7 +39,7 @@ defmodule Pair.SessionScanner do
 
     list_sessions()
     |> Enum.each(fn {name, cmd, path} ->
-      if name not in managed do
+      if name not in managed and session_alive?(name) do
         agent = Path.basename(cmd)
         if debug?(), do: Logger.debug("Scanner adopting #{name} (#{agent} in #{path})")
         DynamicSupervisor.start_child(
@@ -73,6 +73,16 @@ defmodule Pair.SessionScanner do
         |> Enum.reject(&is_nil/1)
       _ -> []
     end
+  end
+
+  defp session_alive?(name) do
+    dead_fmt = ~S(#{pane_dead})
+    case System.cmd("tmux", @socket_args ++ ["list-panes", "-t", name, "-F", dead_fmt], stderr_to_stdout: true) do
+      {"1", 0} -> false
+      _ -> true
+    end
+  rescue
+    _ -> false
   end
 
   defp schedule_scan do
