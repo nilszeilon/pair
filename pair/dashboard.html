@@ -73,7 +73,7 @@
 </div>
 
 <div class="session-list" id="session-list"></div>
-<p class="footer">Auto-refreshes every 5s</p>
+<p class="footer">Auto-refreshes every 2s</p>
 
 <script>
   var host = window.location.hostname;
@@ -114,6 +114,8 @@
       });
   }
 
+  var fastPoll = null;
+
   document.getElementById('new-session-form').addEventListener('submit', function(e) {
     e.preventDefault();
     var agent = document.getElementById('agent').value || 'pi';
@@ -122,11 +124,20 @@
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ root_path: root_path, agent: agent })
-    }).then(function() { render(); });
+    }).then(function() {
+      render();
+      // Poll every 500ms for 10s until scanner adopts the session
+      if (fastPoll) clearInterval(fastPoll);
+      var tries = 0;
+      fastPoll = setInterval(function() {
+        render();
+        if (++tries > 20) clearInterval(fastPoll);
+      }, 500);
+    });
   });
 
   render();
-  setInterval(render, 5000);
+  setInterval(render, 2000);
 </script>
 </body>
 </html>
