@@ -8,8 +8,6 @@ RESET="\033[0m"
 
 echo -e "${BOLD}pair installer${RESET}\n"
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-
 # ── Prerequisites ────────────────────────────────────────────────
 MISSING=""
 
@@ -35,29 +33,13 @@ fi
 
 echo -e "${GREEN}All prerequisites found.${RESET}\n"
 
-# ── Build ────────────────────────────────────────────────────────
-echo -e "${BOLD}Building...${RESET}"
-
-cd "$SCRIPT_DIR"
-go build -ldflags="-s -w" -o pair .
-
-BIN_DIR="${HOME}/bin"
-mkdir -p "$BIN_DIR"
-cp pair "$BIN_DIR/pair"
-
-if ! echo "$PATH" | grep -q "$BIN_DIR"; then
-  for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
-    if ! grep -q "$BIN_DIR" "$rc" 2>/dev/null; then
-      echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$rc"
-      echo -e "  ${GREEN}✓${RESET} Added $BIN_DIR to $rc"
-    fi
-  done
-  echo -e "  Run: source ~/.bashrc (or ~/.zshrc)"
-fi
+# ── Install ──────────────────────────────────────────────────────
+echo -e "${BOLD}Installing...${RESET}"
+go install github.com/nilszeilon/pair@latest 2>&1
 
 echo ""
 echo -e "${GREEN}${BOLD}Done.${RESET}"
 echo ""
 echo "  pair server               start the orchestrator"
 echo "  pair pi                   create and attach to a session"
-echo "  open http://localhost:4242 manage sessions in the browser"
+echo "  open http://localhost:4242 dashboard"

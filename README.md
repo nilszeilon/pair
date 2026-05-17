@@ -10,8 +10,7 @@ Works with **pi**, **Claude Code**, **Codex**, or any terminal-based agent.
 Pair runs its own tmux server and exposes every session as a web terminal via
 [ttyd](https://github.com/tsl0922/ttyd). It binds to your
 [Tailscale](https://tailscale.com) IP automatically, so any device on your
-tailnet can open the session URL. No ports to forward, no `0.0.0.0` bind,
-no cafe wifi exposure.
+tailnet can open the session URL. No ports to forward, no `0.0.0.0` bind.
 
 Single Go binary. Zero dependencies beyond the Go standard library.
 
@@ -31,9 +30,9 @@ Single Go binary. Zero dependencies beyond the Go standard library.
 ## Requirements
 
 - **Go** 1.21+
-- **tmux** — session persistence
-- **ttyd** — terminal over WebSocket
-- **Tailscale** — network access for your other devices
+- **tmux**
+- **ttyd**
+- **Tailscale**
 
 ```bash
 # macOS
@@ -45,39 +44,42 @@ apt install golang tmux ttyd
 curl -fsSL https://tailscale.com/install.sh | sh && tailscale up
 ```
 
-## Quick start
+## Install
 
 ```bash
-git clone https://github.com/nilszeilon/pair.git
-cd pair
-./install.sh
-pair server
+go install github.com/nilszeilon/pair@latest
+```
+
+The binary lands in `~/go/bin/pair`. Make sure `~/go/bin` is on your `PATH`
+(standard Go setup).
+
+## Usage
+
+```bash
+pair server              # start the orchestrator
 ```
 
 In another terminal:
 
 ```bash
-pair pi                    # pi in cwd → auto-named "pi-1"
-pair claude                # claude in cwd → "claude-1"
-pair pi myproject          # named "myproject"
+pair pi                  # pi in cwd → auto-named "pi-1"
+pair claude              # claude in cwd → "claude-1"
+pair pi myproject        # named "myproject"
+pair "pi --model gpt"    # agent with arguments (quote it)
 ```
 
 Open the dashboard URL printed by the server (it uses your Tailscale IP).
 Tap any session's ttyd link on your phone — same session, live.
 
-## Usage
+Sessions are locked down: no `C-b` prefix, no splits, no status bar.
+When the agent exits, the session is fully cleaned up.
+
+**Background the server** so it survives your terminal:
 
 ```bash
-pair                  # pi in cwd (default) → "pi-2"
-pair claude           # any agent → "claude-1"
-pair pi myproject     # custom name
-pair "pi --model gpt" # agent with arguments (quote it)
+pair server &
+# or: tmux new -d -s paird pair server
 ```
-
-Sessions are locked down: no `C-b` prefix, no splits, no status bar.
-When the agent exits, the session is cleaned up completely. From inside
-tmux, you return to your pane. From a regular terminal, you return to
-your shell.
 
 **Under the hood:** `pair` wraps `tmux -L pair`. You can use tmux directly:
 
@@ -90,12 +92,12 @@ tmux -L pair kill-session -t name  # stop one
 
 ```
 Server
-  ├─ map[string]*Session   in-memory session registry
+  ├─ in-memory session registry
   ├─ scanner goroutine     discovers sessions on tmux -L pair (every 10s)
   └─ HTTP (:4242)
-       ├─ GET  /             dashboard HTML
+       ├─ GET  /             dashboard
        ├─ GET  /sessions     JSON session list
-       ├─ POST /sessions     create managed session
+       ├─ POST /sessions     create session
        ├─ GET  /session/:id  session state
        └─ DELETE /session/:id stop session
 
@@ -108,7 +110,7 @@ Per session:
 ## API
 
 ```
-GET    /                       dashboard HTML
+GET    /                       HTML dashboard
 GET    /sessions               JSON session list
 POST   /sessions               { root_path, agent }
 GET    /session/:id            session state
@@ -118,15 +120,13 @@ GET    /health                 "ok"
 
 ## Running without Tailscale
 
-If Tailscale isn't running, the server falls back to `127.0.0.1`. To share on
-a local network:
-
 ```bash
-BIND=0.0.0.0 pair server
+BIND=0.0.0.0 pair server       # local network
+BIND=127.0.0.1 pair server     # localhost only
 ```
 
 ## Security
 
 Pair binds to your Tailscale IP — only devices on your tailnet can connect.
-Traffic is encrypted end-to-end by Tailscale. No authentication on the REST
-API or ttyd ports — treat your tailnet as the security boundary.
+Traffic is encrypted end-to-end by Tailscale. No authentication — treat your
+tailnet as the security boundary.

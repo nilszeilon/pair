@@ -1,10 +1,10 @@
-.PHONY: build test clean
+.PHONY: build install clean
 
 build:
 	go build -ldflags="-s -w" -o pair .
 
-test:
-	go test ./...
+install:
+	go install .
 
 clean:
 	rm -f pair
