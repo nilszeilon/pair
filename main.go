@@ -403,7 +403,7 @@ func tailscaleIP() string {
 	return ""
 }
 
-func ensureServer() {
+func serverAddr() (string, int) {
 	bind := "127.0.0.1"
 	if h := os.Getenv("PAIR_HOST"); h != "" {
 		bind = h
@@ -414,11 +414,48 @@ func ensureServer() {
 			port = v
 		}
 	}
+	return bind, port
+}
 
-	// Check if server is already running
-	resp, err := http.Get(fmt.Sprintf("http://%s:%d/health", bind, port))
-	if err == nil {
-		resp.Body.Close()
+func healthCheck(addr string) bool {
+	resp, err := http.Get(addr)
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == 200
+}
+
+func findServer() string {
+	bind, port := serverAddr()
+
+	// Try the configured address first
+	addr := fmt.Sprintf("http://%s:%d/health", bind, port)
+	if healthCheck(addr) {
+		return fmt.Sprintf("http://%s:%d", bind, port)
+	}
+
+	// If it's localhost, also try Tailscale IP
+	if bind == "127.0.0.1" {
+		if ip := tailscaleIP(); ip != "" {
+			addr = fmt.Sprintf("http://%s:%d/health", ip, port)
+			if healthCheck(addr) {
+				return fmt.Sprintf("http://%s:%d", ip, port)
+			}
+		}
+	} else {
+		// If it's a remote host, also try localhost
+		addr = fmt.Sprintf("http://127.0.0.1:%d/health", port)
+		if healthCheck(addr) {
+			return fmt.Sprintf("http://127.0.0.1:%d", port)
+		}
+	}
+
+	return ""
+}
+
+func ensureServer() {
+	if base := findServer(); base != "" {
 		return
 	}
 
@@ -429,13 +466,21 @@ func ensureServer() {
 	cmd.Start()
 
 	// Wait for it to be ready
+	bind, port := serverAddr()
 	for i := 0; i < 20; i++ {
 		time.Sleep(300 * time.Millisecond)
-		resp, err := http.Get(fmt.Sprintf("http://%s:%d/health", bind, port))
-		if err == nil {
-			resp.Body.Close()
+		addr := fmt.Sprintf("http://%s:%d/health", bind, port)
+		if healthCheck(addr) {
 			fmt.Printf("Pair server started → http://%s:%d\n", bind, port)
 			return
+		}
+		// Also try Tailscale IP
+		if ip := tailscaleIP(); ip != "" && bind != ip {
+			addr = fmt.Sprintf("http://%s:%d/health", ip, port)
+			if healthCheck(addr) {
+				fmt.Printf("Pair server started → http://%s:%d\n", ip, port)
+				return
+			}
 		}
 	}
 
@@ -466,16 +511,10 @@ func cliSession(args []string) {
 	dir, _ := os.Getwd()
 	ensureServer()
 
-	// Talk to server on localhost (or PAIR_HOST for remote)
-	bind := "127.0.0.1"
-	if h := os.Getenv("PAIR_HOST"); h != "" {
-		bind = h
-	}
-	port := 4242
-	if p := os.Getenv("PAIR_PORT"); p != "" {
-		if v, err := strconv.Atoi(p); err == nil {
-			port = v
-		}
+	base := findServer()
+	if base == "" {
+		fmt.Fprintf(os.Stderr, "Server not running. Start it with: pair server\n")
+		os.Exit(1)
 	}
 
 	// Create session via API — server handles tmux + lockdown + ttyd immediately
@@ -485,7 +524,7 @@ func cliSession(args []string) {
 		"name":      name,
 	})
 	resp, err := http.Post(
-		fmt.Sprintf("http://%s:%d/sessions", bind, port),
+		base+"/sessions",
 		"application/json",
 		bytes.NewReader(body),
 	)
