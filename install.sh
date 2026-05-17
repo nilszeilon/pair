@@ -47,5 +47,21 @@ mix compile 2>&1 | tail -1
 echo ""
 echo -e "${GREEN}${BOLD}Done.${RESET}"
 echo ""
-echo "  cd pair && mix pair server    start the orchestrator"
-echo "  open http://localhost:4242    manage sessions in the browser"
+echo "  mix pair server            start the orchestrator"
+echo "  pair pi                    create and attach to a session"
+echo "  open http://localhost:4242 manage sessions in the browser"
+
+# ── Install pair command ─────────────────────────────────────────
+BIN_DIR="${HOME}/bin"
+mkdir -p "$BIN_DIR"
+cp "$SCRIPT_DIR/pair/bin/pair" "$BIN_DIR/pair"
+if ! echo "$PATH" | grep -q "$BIN_DIR"; then
+  for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+    if ! grep -q "$BIN_DIR" "$rc" 2>/dev/null; then
+      echo "export PATH=\"$BIN_DIR:\$PATH\"" >> "$rc"
+      echo -e "  ${GREEN}✓${RESET} Added $BIN_DIR to $rc"
+    fi
+  done
+  echo -e "  Run: source ~/.bashrc (or ~/.zshrc)"
+fi
+echo -e "  ${GREEN}✓${RESET} pair command → $BIN_DIR/pair"

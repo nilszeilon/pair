@@ -1,0 +1,41 @@
+#!/bin/sh
+# pair — create and attach to a session on the pair tmux socket
+#
+#   pair                  → pi in cwd, auto-named
+#   pair claude           → claude in cwd, auto-named
+#   pair "claude --model sonnet"  → with arguments
+#   pair pi myproject     → pi in cwd, named "myproject"
+
+AGENT="$1"
+NAME="$2"
+DIR="$(pwd)"
+
+[ -z "$AGENT" ] && AGENT="pi"
+
+# Auto-generate name if not given
+if [ -z "$NAME" ]; then
+  COUNT_FILE="$HOME/.pair/session-counter"
+  mkdir -p "$HOME/.pair"
+  if [ -f "$COUNT_FILE" ]; then
+    N=$(cat "$COUNT_FILE")
+    N=$((N + 1))
+  else
+    N=1
+  fi
+  echo "$N" > "$COUNT_FILE"
+  NAME="$N"
+fi
+
+# Create the session on the pair socket
+tmux -L pair new-session -d -s "$NAME" "cd $DIR && exec $AGENT" 2>/dev/null || {
+  # If the tmux server isn't running, start it and retry
+  tmux -L pair start-server 2>/dev/null
+  tmux -L pair new-session -d -s "$NAME" "cd $DIR && exec $AGENT"
+}
+
+# Attach to it
+if [ -n "$TMUX" ]; then
+  tmux -L pair switch-client -t "$NAME" 2>/dev/null
+else
+  exec tmux -L pair attach -t "$NAME"
+fi

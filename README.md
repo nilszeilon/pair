@@ -7,17 +7,22 @@ Works with **pi**, **Claude Code**, **Codex**, or any terminal-based agent.
 
 ## What it does
 
-Pair is a tiny Elixir server (~1,000 lines) that runs its own `tmux` server
-and exposes every session via [ttyd](https://github.com/tsl0922/ttyd). You
-control what's shared by which tmux socket you use:
+Pair runs its own tmux server and exposes every session as a web terminal via
+[ttyd](https://github.com/tsl0922/ttyd). Sessions are locked down (no splits,
+no status bar) and auto-restart on crash.
 
 ```
-  tmux -L pair new -s myproject pi    ← shared via pair
-  tmux new -s private                 ← invisible to pair
+  pair pi                    ← create and attach
+       │
+       ▼
+  tmux -L pair session       ← pair's own socket, invisible to your tmux
+       │
+       ▼  auto-discovered
+  Pair.HTTPServer (:4242)    ← dashboard + REST API
+       │
+       ▼
+  ttyd :43XX                 ← browser terminal for your phone
 ```
-
-Pair auto-discovers sessions on its socket every 10 seconds, starts a ttyd
-web terminal for each, and monitors health with automatic crash recovery.
 
 ## Quick start
 
@@ -26,49 +31,45 @@ web terminal for each, and monitors health with automatic crash recovery.
 brew install elixir tmux ttyd    # macOS
 apt install tmux ttyd            # Linux (+ install Elixir 1.14+)
 
-# Clone and build
+# Install
 git clone https://github.com/nilszeilon/pair.git
 cd pair
 ./install.sh
 
 # Start
-cd pair && mix pair server
+mix pair server
 ```
 
-Open `http://localhost:4242` — any session you create on the pair socket appears
-within 10 seconds.
+In another terminal:
+
+```bash
+pair pi                    # pi in current directory
+pair claude                # claude in current directory
+pair pi myproject          # named session "myproject"
+```
+
+Open `http://localhost:4242` — all sessions appear in the dashboard. Open any
+ttyd URL on your phone. Same session, live.
 
 ## Usage
 
-**From the terminal:**
-
 ```bash
-tmux -L pair new-session -s myproject pi
+pair                  # pi in cwd (default)
+pair claude           # any agent in cwd
+pair pi myproject     # named session "myproject"
+pair "pi --model gpt" # agent with arguments (quote it)
 ```
 
-That's it. Pair detects the session, starts ttyd, and shows it in the dashboard
-at `http://localhost:4242`. Open the ttyd URL on your phone — same session, live.
+Sessions are locked down: no `C-b` prefix, no splits, no status bar. The
+terminal is clean and single-purpose. Agent crashes (non-zero exit) trigger
+an automatic restart. Clean exits (Ctrl+D, `exit`) stop the session.
 
-Multi-pane? Go ahead — it's a regular tmux session. `C-b %` splits, `C-b o`
-switches. All panes are visible via the ttyd URL.
-
-**From the browser:** open `http://localhost:4242`, pick an agent and path,
-click Start. The session is created on the pair socket.
-
-**From curl:**
+**Under the hood:** `pair` is a thin wrapper around `tmux -L pair`. You can
+always use tmux directly:
 
 ```bash
-curl -X POST http://localhost:4242/sessions \
-  -H "Content-Type: application/json" \
-  -d '{"root_path": "~", "agent": "pi"}'
-```
-
-**Stop a session:**
-
-```bash
-tmux -L pair kill-session -t myproject
-# or
-curl -X DELETE http://localhost:4242/session/myproject
+tmux -L pair ls                    # list pair sessions
+tmux -L pair kill-session -t name  # stop one
 ```
 
 ## API
@@ -76,9 +77,9 @@ curl -X DELETE http://localhost:4242/session/myproject
 ```
 GET    /                       HTML dashboard (browsers) / JSON (API clients)
 GET    /sessions               JSON session list
-POST   /sessions               { root_path, agent, env, host }
+POST   /sessions               { root_path, agent }
 GET    /session/:id            session state
-DELETE /session/:id            stop session (keeps tmux alive if adopted)
+DELETE /session/:id            stop session
 GET    /health                 "ok"
 ```
 
@@ -88,8 +89,7 @@ GET    /health                 "ok"
 BIND=0.0.0.0 mix pair server
 ```
 
-Open `http://<server-ip>:4242` from any device. Create sessions on the server
-with `tmux -L pair new -s name pi`.
+Open `http://<server-ip>:4242` from any device.
 
 ## Works with Tailscale
 
@@ -102,13 +102,14 @@ If Tailscale is running, the server binds to your Tailscale IP automatically
 Pair.Application
   ├─ Registry            session lookup by ID
   ├─ DynamicSupervisor   session lifecycle
-  ├─ SessionScanner      discovers sessions on tmux -L pair
+  ├─ SessionScanner      auto-discovers sessions on tmux -L pair
   └─ Bandit (:4242)
        └─ Pair.HTTPServer
             └─ Pair.SessionServer (one per session)
-                 ├─ tmux -L pair session (created or adopted)
+                 ├─ tmux -L pair session
+                 ├─ remain-on-exit / prefix None / status off
                  ├─ ttyd on port 4300–4399
-                 └─ health check every 10s → auto-restart crashed agents
+                 └─ health check every 10s → crash recovery
 ```
 
 ## Security

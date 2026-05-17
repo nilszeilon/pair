@@ -63,7 +63,7 @@ defmodule Pair.SessionServer do
     end
 
     # Lock down: no splits/windows, keep pane alive on exit for crash detection
-    tmux(["set-option", "-t", session_name, "remain-on-exit", "on"])
+    tmux(["set-window-option", "-t", session_name, "remain-on-exit", "on"])
     tmux(["set-option", "-t", session_name, "prefix", "None"])
     tmux(["set-option", "-t", session_name, "status", "off"])
 
@@ -212,7 +212,7 @@ defmodule Pair.SessionServer do
     tmux(["new-session", "-d", "-s", state.tmux_session, "sh", "-c", cmd])
 
     # Re-apply lockdown after recreate
-    tmux(["set-option", "-t", state.tmux_session, "remain-on-exit", "on"])
+    tmux(["set-window-option", "-t", state.tmux_session, "remain-on-exit", "on"])
     tmux(["set-option", "-t", state.tmux_session, "prefix", "None"])
     tmux(["set-option", "-t", state.tmux_session, "status", "off"])
 

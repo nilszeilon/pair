@@ -23,6 +23,9 @@ defmodule Pair.Application do
        Sessions:  http://#{bind}:#{port}/
     """)
 
+    # Start the pair tmux server if not already running
+    System.cmd("tmux", ["-L", "pair", "start-server"], stderr_to_stdout: true)
+
     opts = [strategy: :one_for_one, name: Pair.Supervisor]
     Supervisor.start_link(children, opts)
   end
