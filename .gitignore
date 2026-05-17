@@ -1,8 +1,6 @@
-# Elixir
-_build/
-deps/
-*.beam
-erl_crash.dump
+# Go
+pair
+*.exe
 
 # OS
 .DS_Store
@@ -15,7 +13,7 @@ Thumbs.db
 *.swp
 *.swo
 
-# Config (API keys, etc)
+# Config
 auth.json
 settings.json
 *.pem

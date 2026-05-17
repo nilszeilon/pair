@@ -13,8 +13,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # ── Prerequisites ────────────────────────────────────────────────
 MISSING=""
 
-if ! command -v elixir &>/dev/null; then
-    echo -e "  ${RED}✗${RESET} Elixir — install from https://elixir-lang.org/install.html"
+if ! command -v go &>/dev/null; then
+    echo -e "  ${RED}✗${RESET} Go — install from https://go.dev/dl/"
     MISSING=1
 fi
 
@@ -38,23 +38,13 @@ echo -e "${GREEN}All prerequisites found.${RESET}\n"
 # ── Build ────────────────────────────────────────────────────────
 echo -e "${BOLD}Building...${RESET}"
 
-cd "$SCRIPT_DIR/pair"
-mix local.hex --force 2>&1 | tail -1
-mix local.rebar --force 2>&1 | tail -1
-mix deps.get --only prod 2>&1 | tail -1
-mix compile 2>&1 | tail -1
+cd "$SCRIPT_DIR"
+go build -ldflags="-s -w" -o pair .
 
-echo ""
-echo -e "${GREEN}${BOLD}Done.${RESET}"
-echo ""
-echo "  mix pair server            start the orchestrator"
-echo "  pair pi                    create and attach to a session"
-echo "  open http://localhost:4242 manage sessions in the browser"
-
-# ── Install pair command ─────────────────────────────────────────
 BIN_DIR="${HOME}/bin"
 mkdir -p "$BIN_DIR"
-cp "$SCRIPT_DIR/pair/bin/pair" "$BIN_DIR/pair"
+cp pair "$BIN_DIR/pair"
+
 if ! echo "$PATH" | grep -q "$BIN_DIR"; then
   for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
     if ! grep -q "$BIN_DIR" "$rc" 2>/dev/null; then
@@ -64,4 +54,10 @@ if ! echo "$PATH" | grep -q "$BIN_DIR"; then
   done
   echo -e "  Run: source ~/.bashrc (or ~/.zshrc)"
 fi
-echo -e "  ${GREEN}✓${RESET} pair command → $BIN_DIR/pair"
+
+echo ""
+echo -e "${GREEN}${BOLD}Done.${RESET}"
+echo ""
+echo "  pair server               start the orchestrator"
+echo "  pair pi                   create and attach to a session"
+echo "  open http://localhost:4242 manage sessions in the browser"

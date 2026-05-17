@@ -1,10 +1,10 @@
-.PHONY: server test clean
+.PHONY: build test clean
 
-server:
-	cd pair && mix deps.get && mix compile
+build:
+	go build -ldflags="-s -w" -o pair .
 
 test:
-	cd pair && mix test
+	go test ./...
 
 clean:
-	cd pair && mix clean
+	rm -f pair
