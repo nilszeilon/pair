@@ -110,6 +110,7 @@ defmodule Pair.SessionServer do
     Logger.info("Session #{state.id} terminating (reason: #{inspect(reason)})")
     unless state[:adopt] do
       tmux(["kill-session", "-t", state.tmux_session])
+      Process.sleep(200)
     end
     System.cmd("pkill", ["-f", "ttyd.*#{state.ttyd_port}"], stderr_to_stdout: true)
     :ok
