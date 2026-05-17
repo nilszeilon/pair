@@ -60,15 +60,14 @@ defmodule Pair.SessionServer do
       if status != 0 do
         Logger.error("tmux failed: #{String.trim(output)}")
       end
-
     end
+
+    # Lock down: no splits/windows, keep pane alive on exit for crash detection
+    tmux(["set-option", "-t", session_name, "remain-on-exit", "on"])
+    tmux(["set-option", "-t", session_name, "prefix", "None"])
+    tmux(["set-option", "-t", session_name, "status", "off"])
 
     ttyd_port = ensure_ttyd(session_name)
-
-    unless adopt do
-      set_tmux_status(session_name, ttyd_port, Map.get(env, "HOST", "unknown"), root_path)
-    end
-
     schedule_health_check()
 
     state = %{
@@ -113,14 +112,18 @@ defmodule Pair.SessionServer do
         :running ->
           if debug?(), do: Logger.debug("health_check #{state.tmux_session} running")
           :ok
-        :dead ->
-          Logger.info("Agent exited in #{state.tmux_session}, stopping session")
+        {:exited, 0} ->
+          Logger.info("Agent exited normally in #{state.tmux_session}, stopping")
           :stop
+        {:exited, code} ->
+          Logger.warning("Agent crashed in #{state.tmux_session} (exit #{code}), restarting...")
+          restart_agent(state)
+          :ok
         :gone ->
           Logger.warning("tmux session #{state.tmux_session} gone, stopping")
           :stop
         :crashed ->
-          Logger.warning("agent crashed in #{state.tmux_session}, restarting...")
+          Logger.warning("Agent process disappeared in #{state.tmux_session}, restarting...")
           restart_agent(state)
           :ok
       end
@@ -175,13 +178,17 @@ defmodule Pair.SessionServer do
   end
 
   defp pane_status(session) do
-    format = ~S(#{pane_dead} #{pane_pid})
+    format = ~S(#{pane_dead} #{pane_dead_status} #{pane_pid})
     {output, 0} = tmux(["list-panes", "-t", session, "-F", format])
-    [dead_str, pid_str] = String.split(String.trim(output), " ", parts: 2)
+    [dead_str, status_str, pid_str] = String.split(String.trim(output), " ", parts: 3)
 
     cond do
       dead_str == "1" ->
-        :dead
+        code = case Integer.parse(status_str) do
+          {n, _} -> n
+          _ -> 1
+        end
+        {:exited, code}
 
       pid_str == "" or pid_str == "0" ->
         :crashed
@@ -199,19 +206,15 @@ defmodule Pair.SessionServer do
   end
 
   defp restart_agent(state) do
-    env_exports = build_env_exports(state.env)
-
-    cmd =
-      if env_exports != "" do
-        "cd #{escape(state.root_path)} && #{env_exports} && exec #{state.agent}"
-      else
-        "cd #{escape(state.root_path)} && exec #{state.agent}"
-      end
+    cmd = "cd #{escape(state.root_path)} && exec #{state.agent}"
 
     tmux(["kill-session", "-t", state.tmux_session])
     tmux(["new-session", "-d", "-s", state.tmux_session, "sh", "-c", cmd])
 
-    set_tmux_status(state.tmux_session, state.ttyd_port, Map.get(state.env, "HOST", "unknown"), state.root_path)
+    # Re-apply lockdown after recreate
+    tmux(["set-option", "-t", state.tmux_session, "remain-on-exit", "on"])
+    tmux(["set-option", "-t", state.tmux_session, "prefix", "None"])
+    tmux(["set-option", "-t", state.tmux_session, "status", "off"])
 
     Logger.info("Restarted agent in #{state.tmux_session}")
   rescue
@@ -220,19 +223,6 @@ defmodule Pair.SessionServer do
 
   defp schedule_health_check do
     Process.send_after(self(), :health_check, 10_000)
-  end
-
-  defp set_tmux_status(session_name, ttyd_port, host, root_path) do
-    url = "http://#{host}:#{ttyd_port}"
-    folder = Path.basename(root_path)
-    left = " #[fg=cyan,bold]#{folder} #[fg=default]"
-    right = " #[fg=green]#{url} #[fg=default] "
-
-    tmux(["set-window-option", "-t", session_name, "window-size", "latest"])
-    tmux(["set-window-option", "-t", session_name, "aggressive-resize", "on"])
-    tmux(["set-option", "-t", session_name, "status-left", left])
-    tmux(["set-option", "-t", session_name, "status-right", right])
-    tmux(["set-option", "-t", session_name, "status-style", "bg=colour236,fg=white"])
   end
 
   # ── ttyd management ──────────────────────────────────────────────
