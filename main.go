@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	_ "embed"
 	"encoding/json"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 )
@@ -46,6 +48,11 @@ type Server struct {
 	sessions map[string]*Session
 	bind     string
 	port     int
+	counter  atomic.Int64
+}
+
+func (s *Server) nextID() int64 {
+	return s.counter.Add(1)
 }
 
 func (s *Server) listSessions() []Session {
@@ -82,6 +89,7 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			RootPath string `json:"root_path"`
 			Agent    string `json:"agent"`
+			Name     string `json:"name"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			body.RootPath = ""
@@ -95,8 +103,12 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		} else {
 			body.RootPath = resolvePath(body.RootPath)
 		}
+		if body.Name == "" {
+			agentName := strings.Fields(body.Agent)[0]
+			body.Name = fmt.Sprintf("%s-%d", agentName, s.nextID())
+		}
 
-		id := strconv.Itoa(int(time.Now().UnixNano() % 100000))
+		id := body.Name
 		sess, err := s.startSession(id, body.RootPath, body.Agent, false)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
@@ -392,13 +404,9 @@ func tailscaleIP() string {
 }
 
 func ensureServer() {
-	bind := os.Getenv("BIND")
-	if bind == "" {
-		if ip := tailscaleIP(); ip != "" {
-			bind = ip
-		} else {
-			bind = "127.0.0.1"
-		}
+	bind := "127.0.0.1"
+	if h := os.Getenv("PAIR_HOST"); h != "" {
+		bind = h
 	}
 	port := 4242
 	if p := os.Getenv("PAIR_PORT"); p != "" {
@@ -455,44 +463,55 @@ func cliSession(args []string) {
 		name = args[1]
 	}
 
-	// Ensure the server is running
+	dir, _ := os.Getwd()
 	ensureServer()
 
-	if name == "" {
-		// Auto-name: agent-N
-		counterFile := filepath.Join(os.Getenv("HOME"), ".pair", "session-counter")
-		os.MkdirAll(filepath.Dir(counterFile), 0700)
-		n := 1
-		if data, err := os.ReadFile(counterFile); err == nil {
-			fmt.Sscanf(string(data), "%d", &n)
-			n++
+	// Talk to server on localhost (or PAIR_HOST for remote)
+	bind := "127.0.0.1"
+	if h := os.Getenv("PAIR_HOST"); h != "" {
+		bind = h
+	}
+	port := 4242
+	if p := os.Getenv("PAIR_PORT"); p != "" {
+		if v, err := strconv.Atoi(p); err == nil {
+			port = v
 		}
-		os.WriteFile(counterFile, []byte(strconv.Itoa(n)), 0600)
-
-		// Extract just the binary name
-		agentName := strings.Fields(agent)[0]
-		name = fmt.Sprintf("%s-%d", agentName, n)
 	}
 
-	dir, _ := os.Getwd()
+	// Create session via API — server handles tmux + lockdown + ttyd immediately
+	body, _ := json.Marshal(map[string]string{
+		"root_path": dir,
+		"agent":     agent,
+		"name":      name,
+	})
+	resp, err := http.Post(
+		fmt.Sprintf("http://%s:%d/sessions", bind, port),
+		"application/json",
+		bytes.NewReader(body),
+	)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create session: %v\n", err)
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
 
-	// Ensure tmux server is running
-	exec.Command("tmux", "-L", "pair", "start-server").Run()
+	var result struct {
+		ID string `json:"id"`
+	}
+	json.NewDecoder(resp.Body).Decode(&result)
+	if result.ID == "" {
+		fmt.Fprintf(os.Stderr, "Server returned no session ID\n")
+		os.Exit(1)
+	}
 
-	// Create session
-	cmd := fmt.Sprintf("cd %s && exec %s", escapeShell(dir), agent)
-	exec.Command("tmux", "-L", "pair", "new-session", "-d", "-s", name, "sh", "-c", cmd).Run()
-
-	// Attach
-	attachCmd := exec.Command("tmux", "-L", "pair", "attach", "-t", name)
+	// Attach to the session
+	attachCmd := exec.Command("tmux", "-L", "pair", "attach", "-t", result.ID)
 	attachCmd.Stdin = os.Stdin
 	attachCmd.Stdout = os.Stdout
 	attachCmd.Stderr = os.Stderr
 
 	if os.Getenv("TMUX") != "" {
-		// Inside tmux: exec replaces the shell so we return on exit
-		attachCmd.SysProcAttr = &syscall.SysProcAttr{}
-		syscall.Exec(attachCmd.Path, append([]string{"tmux", "-L", "pair", "attach", "-t", name}), os.Environ())
+		syscall.Exec(attachCmd.Path, []string{"tmux", "-L", "pair", "attach", "-t", result.ID}, os.Environ())
 	} else {
 		attachCmd.Run()
 	}
