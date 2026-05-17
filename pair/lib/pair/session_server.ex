@@ -54,8 +54,7 @@ defmodule Pair.SessionServer do
       end
     end
 
-    # Lock down: no splits/windows, keep pane alive on exit for crash detection
-    tmux(["set-window-option", "-t", session_name, "remain-on-exit", "on"])
+    # Lock down: no splits/windows
     tmux(["set-option", "-t", session_name, "prefix", "None"])
     tmux(["set-option", "-t", session_name, "status", "off"])
 
@@ -96,32 +95,13 @@ defmodule Pair.SessionServer do
 
   @impl true
   def handle_info(:health_check, state) do
-    result =
-      case pane_status(state.tmux_session) do
-        :running ->
-          if debug?(), do: Logger.debug("health_check #{state.tmux_session} running")
-          :ok
-        {:exited, 0} ->
-          Logger.info("Agent exited normally in #{state.tmux_session}, stopping")
-          :stop
-        {:exited, code} ->
-          Logger.warning("Agent crashed in #{state.tmux_session} (exit #{code}), restarting...")
-          restart_agent(state)
-          :ok
-        :gone ->
-          Logger.warning("tmux session #{state.tmux_session} gone, stopping")
-          :stop
-        :crashed ->
-          Logger.warning("Agent process disappeared in #{state.tmux_session}, restarting...")
-          restart_agent(state)
-          :ok
-      end
-
-    case result do
-      :stop -> {:stop, :normal, state}
-      :ok ->
-        schedule_health_check()
-        {:noreply, state}
+    if pi_running?(state.tmux_session) do
+      if debug?(), do: Logger.debug("health_check #{state.tmux_session} running")
+      schedule_health_check()
+      {:noreply, state}
+    else
+      Logger.info("Agent exited in #{state.tmux_session}, stopping")
+      {:stop, :normal, state}
     end
   end
 
@@ -144,48 +124,22 @@ defmodule Pair.SessionServer do
   defp escape(path), do: String.replace(path, "'", "'\\''")
 
   defp pane_status(session) do
-    format = ~S(#{pane_dead} #{pane_dead_status} #{pane_pid})
+    format = ~S(#{pane_dead} #{pane_pid})
     {output, 0} = tmux(["list-panes", "-t", session, "-F", format])
-    [dead_str, status_str, pid_str] = String.split(String.trim(output), " ", parts: 3)
+    [dead_str, pid_str] = String.split(String.trim(output), " ", parts: 2)
 
     cond do
-      dead_str == "1" ->
-        code = case Integer.parse(status_str) do
-          {n, _} -> n
-          _ -> 1
-        end
-        {:exited, code}
-
-      pid_str == "" or pid_str == "0" ->
-        :crashed
-
+      dead_str == "1" -> false
+      pid_str == "" or pid_str == "0" -> false
       true ->
         {_, exit_code} = System.cmd("kill", ["-0", pid_str], stderr_to_stdout: true)
-        if exit_code == 0, do: :running, else: :crashed
+        exit_code == 0
     end
   rescue
-    _ -> :gone
+    _ -> false
   end
 
-  defp pi_running?(session) do
-    pane_status(session) == :running
-  end
-
-  defp restart_agent(state) do
-    cmd = "cd #{escape(state.root_path)} && exec #{state.agent}"
-
-    tmux(["kill-session", "-t", state.tmux_session])
-    tmux(["new-session", "-d", "-s", state.tmux_session, "sh", "-c", cmd])
-
-    # Re-apply lockdown after recreate
-    tmux(["set-window-option", "-t", state.tmux_session, "remain-on-exit", "on"])
-    tmux(["set-option", "-t", state.tmux_session, "prefix", "None"])
-    tmux(["set-option", "-t", state.tmux_session, "status", "off"])
-
-    Logger.info("Restarted agent in #{state.tmux_session}")
-  rescue
-    _ -> :ok
-  end
+  defp pi_running?(session), do: pane_status(session)
 
   defp schedule_health_check do
     Process.send_after(self(), :health_check, 10_000)

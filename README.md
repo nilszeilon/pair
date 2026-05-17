@@ -73,8 +73,8 @@ pair "pi --model gpt" # agent with arguments (quote it)
 ```
 
 Sessions are locked down: no `C-b` prefix, no splits, no status bar. The
-terminal is clean and single-purpose. Agent crashes (non-zero exit) trigger
-an automatic restart. Clean exits (Ctrl+D, `exit`) stop the session.
+terminal is clean and single-purpose. When the agent exits (cleanly or not),
+the session is removed from the dashboard.
 
 **Under the hood:** `pair` wraps `tmux -L pair`. You can use tmux directly:
 
@@ -94,9 +94,9 @@ Pair.Application
        └─ Pair.HTTPServer
             └─ Pair.SessionServer (one per session)
                  ├─ tmux -L pair session
-                 ├─ remain-on-exit / prefix None / status off
+                 ├─ prefix None / status off
                  ├─ ttyd on port 4300–4399
-                 └─ health check every 10s → crash recovery
+                 └─ health check every 10s → removes dead sessions
 ```
 
 ## API
