@@ -45,7 +45,7 @@ defmodule Pair.HTTPServer do
           {File.cwd!(), "pi"}
       end
 
-    id = Integer.to_string(System.unique_integer([:monotonic]))
+    id = Integer.to_string(System.unique_integer([:positive]))
     if debug?(), do: Logger.info("POST /sessions id=#{id} root=#{root_path} agent=#{agent}")
 
     case start_session(id, root_path, agent) do

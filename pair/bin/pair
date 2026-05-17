@@ -1,8 +1,8 @@
 #!/bin/sh
 # pair — create and attach to a session on the pair tmux socket
 #
-#   pair                  → pi in cwd, auto-named
-#   pair claude           → claude in cwd, auto-named
+#   pair                  → pi in cwd, auto-named "pi-1"
+#   pair claude           → claude in cwd, auto-named "claude-1"
 #   pair "claude --model sonnet"  → with arguments
 #   pair pi myproject     → pi in cwd, named "myproject"
 
@@ -23,7 +23,10 @@ if [ -z "$NAME" ]; then
     N=1
   fi
   echo "$N" > "$COUNT_FILE"
-  NAME="$N"
+
+  # Use just the binary name (first word of agent) for the session name
+  AGENT_NAME=$(echo "$AGENT" | awk '{print $1}')
+  NAME="$AGENT_NAME-$N"
 fi
 
 # Create the session on the pair socket
