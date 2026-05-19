@@ -493,6 +493,8 @@ func ensureServer() {
 func printUsage() {
 	fmt.Println(`Usage:
   pair server              Start the orchestrator
+  pair browse              List sessions and pick one to attach to
+  pair browse <name>       Attach to a specific session
   pair <agent>             Start an agent session (default: pi)
   pair <agent> <name>      Named session
   pair "agent --args"      Agent with arguments`)
@@ -592,6 +594,73 @@ func cliServer() {
 	log.Fatal(http.ListenAndServe(addr, srv.mux()))
 }
 
+func cliBrowse(args []string) {
+	// List all pair tmux sessions
+	sessions := listPairSessions()
+	if len(sessions) == 0 {
+		fmt.Println("No pair sessions found.")
+		fmt.Println("Start one with: pair pi")
+		return
+	}
+
+	// If a name was provided, attach directly
+	if len(args) > 0 {
+		name := args[0]
+		for _, s := range sessions {
+			if s.name == name {
+				attachSession(name)
+				return
+			}
+		}
+		fmt.Fprintf(os.Stderr, "Session %q not found.\n", name)
+		os.Exit(1)
+	}
+
+	// No name — list sessions for interactive picking
+	fmt.Printf("Pair sessions:\n\n")
+	for i, s := range sessions {
+		fmt.Printf("  [%d] %s  (%s @ %s)\n", i+1, s.name, s.command, s.path)
+	}
+
+	// If only one session, attach to it automatically
+	if len(sessions) == 1 {
+		fmt.Printf("\nAttaching to %s...\n", sessions[0].name)
+		attachSession(sessions[0].name)
+		return
+	}
+
+	// Prompt the user
+	fmt.Printf("\nPick a session (1-%d) or press Enter to quit: ", len(sessions))
+
+	var input string
+	fmt.Scanln(&input)
+
+	if input == "" {
+		return
+	}
+
+	idx, err := strconv.Atoi(input)
+	if err != nil || idx < 1 || idx > len(sessions) {
+		fmt.Fprintf(os.Stderr, "Invalid choice.\n")
+		os.Exit(1)
+	}
+
+	attachSession(sessions[idx-1].name)
+}
+
+func attachSession(name string) {
+	attachCmd := exec.Command("tmux", "-L", "pair", "attach", "-t", name)
+	attachCmd.Stdin = os.Stdin
+	attachCmd.Stdout = os.Stdout
+	attachCmd.Stderr = os.Stderr
+
+	if os.Getenv("TMUX") != "" {
+		syscall.Exec(attachCmd.Path, []string{"tmux", "-L", "pair", "attach", "-t", name}, os.Environ())
+	} else {
+		attachCmd.Run()
+	}
+}
+
 func main() {
 	if len(os.Args) < 2 || os.Args[1] == "help" || os.Args[1] == "--help" {
 		printUsage()
@@ -601,6 +670,8 @@ func main() {
 	switch os.Args[1] {
 	case "server":
 		cliServer()
+	case "browse":
+		cliBrowse(os.Args[2:])
 	default:
 		cliSession(os.Args[1:])
 	}

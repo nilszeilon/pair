@@ -49,6 +49,8 @@ pair claude              # any agent
 pair pi myproject        # named session
 pair "pi --model gpt"    # agent with arguments (quote it)
 pair server &            # start server explicitly in background
+pair browse              # list sessions and pick one to attach to
+pair browse myproject    # attach to a named session directly
 ```
 
 Sessions are locked down — no `C-b` prefix, no splits, no status bar.
