@@ -181,9 +181,9 @@ func (s *Server) startSession(id, rootPath, agent string, adopted bool) (*Sessio
 		run("tmux", "-L", "pair", "new-session", "-d", "-s", tmuxName, "sh", "-c", cmd)
 	}
 
-	// Lock down
-	run("tmux", "-L", "pair", "set-option", "-t", tmuxName, "prefix", "None")
-	run("tmux", "-L", "pair", "set-option", "-t", tmuxName, "status", "off")
+	// Configure tmux
+	run("tmux", "-L", "pair", "set-option", "-t", tmuxName, "status", "on")
+	run("tmux", "-L", "pair", "set-option", "-t", tmuxName, "mouse", "on")
 
 	// Start ttyd
 	startTTYD(tmuxName, port, s.bind)
