@@ -29,11 +29,11 @@ var indexHTML string
 
 type Session struct {
 	ID          string    `json:"id"`
-	Agent       string    `json:"agent"`
+	Command     string    `json:"command"`
 	RootPath    string    `json:"root_path"`
 	TmuxSession string    `json:"tmux_session"`
 	URL         string    `json:"url"`
-	PiAlive     bool      `json:"pi_alive"`
+	Alive       bool      `json:"alive"`
 	Adopted     bool      `json:"adopted"`
 	StartedAt   string    `json:"started_at"`
 
@@ -88,15 +88,18 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 	case "POST":
 		var body struct {
 			RootPath string `json:"root_path"`
-			Agent    string `json:"agent"`
+			Command  string `json:"command"`
+			Agent    string `json:"agent"` // legacy alias
 			Name     string `json:"name"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			body.RootPath = ""
-			body.Agent = "pi"
 		}
-		if body.Agent == "" {
-			body.Agent = "pi"
+		if body.Command == "" {
+			body.Command = body.Agent
+		}
+		if body.Command == "" {
+			body.Command = defaultCommand()
 		}
 		if body.RootPath == "" {
 			body.RootPath, _ = os.Getwd()
@@ -104,12 +107,13 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 			body.RootPath = resolvePath(body.RootPath)
 		}
 		if body.Name == "" {
-			agentName := strings.Fields(body.Agent)[0]
-			body.Name = fmt.Sprintf("%s-%d", agentName, s.nextID())
+			cmdName := strings.Fields(body.Command)[0]
+			cmdName = filepath.Base(cmdName)
+			body.Name = fmt.Sprintf("%s-%d", cmdName, s.nextID())
 		}
 
 		id := body.Name
-		sess, err := s.startSession(id, body.RootPath, body.Agent, false)
+		sess, err := s.startSession(id, body.RootPath, body.Command, false)
 		if err != nil {
 			http.Error(w, err.Error(), 500)
 			return
@@ -120,11 +124,11 @@ func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]interface{}{
 			"status": "started",
 			"id":           sess.ID,
-			"agent":        sess.Agent,
+			"command":      sess.Command,
 			"root_path":    sess.RootPath,
 			"tmux_session": sess.TmuxSession,
 			"url":          sess.URL,
-			"pi_alive":     sess.PiAlive,
+			"alive":        sess.Alive,
 			"adopted":      sess.Adopted,
 			"started_at":   sess.StartedAt,
 		})
@@ -171,13 +175,13 @@ func (s *Server) mux() http.Handler {
 
 // ── Session lifecycle ────────────────────────────────────────────────
 
-func (s *Server) startSession(id, rootPath, agent string, adopted bool) (*Session, error) {
+func (s *Server) startSession(id, rootPath, command string, adopted bool) (*Session, error) {
 	tmuxName := id
 	port := allocatePort(id)
 
 	if !adopted {
 		os.MkdirAll(rootPath, 0755)
-		cmd := fmt.Sprintf("cd %s && exec %s", escapeShell(rootPath), agent)
+		cmd := fmt.Sprintf("cd %s && exec %s", escapeShell(rootPath), command)
 		run("tmux", "-L", "pair", "new-session", "-d", "-s", tmuxName, "sh", "-c", cmd)
 	}
 
@@ -193,11 +197,11 @@ func (s *Server) startSession(id, rootPath, agent string, adopted bool) (*Sessio
 
 	sess := &Session{
 		ID:          id,
-		Agent:       agent,
+		Command:     command,
 		RootPath:    rootPath,
 		TmuxSession: tmuxName,
 		URL:         fmt.Sprintf("http://%s:%d", s.bind, port),
-		PiAlive:     true,
+		Alive:       true,
 		Adopted:     adopted,
 		StartedAt:   time.Now().UTC().Format(time.RFC3339),
 		ttydPort:    port,
@@ -212,9 +216,9 @@ func (s *Server) startSession(id, rootPath, agent string, adopted bool) (*Sessio
 	go s.healthCheck(sess)
 
 	if adopted {
-		log.Printf("Adopted session %s (%s)", id, agent)
+		log.Printf("Adopted session %s (%s)", id, command)
 	} else {
-		log.Printf("Started session %s (%s)", id, agent)
+		log.Printf("Started session %s (%s)", id, command)
 	}
 
 	return sess, nil
@@ -247,7 +251,7 @@ func (s *Server) healthCheck(sess *Session) {
 			return
 		case <-ticker.C:
 			if !paneAlive(sess.TmuxSession) {
-				log.Printf("Agent exited in %s, stopping", sess.ID)
+				log.Printf("Command exited in %s, stopping", sess.ID)
 				s.stopSession(sess.ID)
 				return
 			}
@@ -391,6 +395,13 @@ func escapeShell(s string) string {
 	return strings.ReplaceAll(s, "'", "'\\''")
 }
 
+func defaultCommand() string {
+	if sh := os.Getenv("SHELL"); sh != "" {
+		return sh
+	}
+	return "bash"
+}
+
 func tailscaleIP() string {
 	out, err := exec.Command("tailscale", "ip", "-4").Output()
 	if err != nil {
@@ -495,16 +506,17 @@ func printUsage() {
   pair server              Start the orchestrator
   pair browse              List sessions and pick one to attach to
   pair browse <name>       Attach to a specific session
-  pair <agent>             Start an agent session (default: pi)
-  pair <agent> <name>      Named session
-  pair "agent --args"      Agent with arguments`)
+  pair                     Start a shell session
+  pair <command>           Run any command (pi, nvim, htop, ssh, …)
+  pair <command> <name>    Named session
+  pair "cmd --args"        Command with arguments (quote it)`)
 }
 
 func cliSession(args []string) {
-	agent := "pi"
+	command := defaultCommand()
 	name := ""
 	if len(args) > 0 {
-		agent = args[0]
+		command = args[0]
 	}
 	if len(args) > 1 {
 		name = args[1]
@@ -522,7 +534,7 @@ func cliSession(args []string) {
 	// Create session via API — server handles tmux + lockdown + ttyd immediately
 	body, _ := json.Marshal(map[string]string{
 		"root_path": dir,
-		"agent":     agent,
+		"command":   command,
 		"name":      name,
 	})
 	resp, err := http.Post(
@@ -589,7 +601,7 @@ func cliServer() {
 	addr := fmt.Sprintf("%s:%d", bind, port)
 	fmt.Printf("🧠 Pair orchestrator → http://%s\n", addr)
 	fmt.Printf("   Dashboard:  http://%s:%d\n", bind, port)
-	fmt.Printf("   Sessions:   pair pi\n")
+	fmt.Printf("   Sessions:   pair\n")
 
 	log.Fatal(http.ListenAndServe(addr, srv.mux()))
 }
@@ -599,7 +611,7 @@ func cliBrowse(args []string) {
 	sessions := listPairSessions()
 	if len(sessions) == 0 {
 		fmt.Println("No pair sessions found.")
-		fmt.Println("Start one with: pair pi")
+		fmt.Println("Start one with: pair")
 		return
 	}
 
@@ -662,17 +674,18 @@ func attachSession(name string) {
 }
 
 func main() {
-	if len(os.Args) < 2 || os.Args[1] == "help" || os.Args[1] == "--help" {
-		printUsage()
-		return
+	if len(os.Args) >= 2 {
+		switch os.Args[1] {
+		case "help", "--help":
+			printUsage()
+			return
+		case "server":
+			cliServer()
+			return
+		case "browse":
+			cliBrowse(os.Args[2:])
+			return
+		}
 	}
-
-	switch os.Args[1] {
-	case "server":
-		cliServer()
-	case "browse":
-		cliBrowse(os.Args[2:])
-	default:
-		cliSession(os.Args[1:])
-	}
+	cliSession(os.Args[1:])
 }

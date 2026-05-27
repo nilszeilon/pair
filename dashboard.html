@@ -32,8 +32,8 @@
 
 <div class="new-session">
   <div class="field">
-    <label for="agent">Agent</label>
-    <input id="agent" value="pi" placeholder="pi">
+    <label for="command">Command</label>
+    <input id="command" value="" placeholder="pi, nvim, htop">
   </div>
   <div class="field">
     <label for="root_path">Path</label>
@@ -50,18 +50,18 @@ function render() {
   fetch('/sessions').then(r => r.json()).then(sessions => {
     var list = document.getElementById('session-list');
     if (!sessions.length) {
-      list.innerHTML = '<div class="empty">No active sessions.<br>Run pair &lt;agent&gt; in a terminal.</div>';
+      list.innerHTML = '<div class="empty">No active sessions.<br>Run pair &lt;command&gt; in a terminal.</div>';
       return;
     }
     list.innerHTML = sessions.map(s => {
-      var alive = s.pi_alive !== false;
+      var alive = s.alive !== false;
       return '<div class="session-card">' +
         '<div class="info">' +
           '<div class="name">' + esc(s.id) + '</div>' +
           '<div class="meta">' +
             '<span class="status ' + (alive ? 'alive' : '') + '"></span>' +
             (alive ? 'live' : 'stopped') +
-            ' · ' + esc(s.agent) +
+            ' · ' + esc(s.command) +
             ' · ' + (s.adopted ? 'adopted' : 'managed') +
           '</div>' +
         '</div>' +
@@ -74,9 +74,9 @@ function render() {
 function esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
 document.getElementById('start-btn').addEventListener('click', function() {
-  var agent = document.getElementById('agent').value || 'pi';
+  var command = document.getElementById('command').value;
   var root_path = document.getElementById('root_path').value || '~';
-  fetch('/sessions', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({root_path,agent})}).then(render);
+  fetch('/sessions', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({root_path,command})}).then(render);
 });
 
 render();

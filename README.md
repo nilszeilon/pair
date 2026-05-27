@@ -1,9 +1,10 @@
 # pair
 
-Run a coding agent in a terminal session that stays alive when you disconnect.
+Run any terminal tool in a session that stays alive when you disconnect.
 Open it on your phone, tablet, or another computer — all seeing the same screen.
 
-Works with **pi**, **Claude Code**, **Codex**, or any terminal-based agent.
+Works with **shells**, **coding agents** (pi, Claude Code, Codex), **editors** (nvim, vim),
+**monitors** (htop, btop), **SSH**, or anything else that runs in a terminal.
 
 ## How it works
 
@@ -38,23 +39,23 @@ The binary lands in `~/go/bin/pair`. Make sure `~/go/bin` is on your `PATH`
 ## Usage
 
 ```bash
-pair pi                  # auto-starts server, creates session, attaches you
+pair                     # shell session in current directory
 ```
 
 That's it. The server auto-starts in the background on first use.
 Open the dashboard URL (it uses your Tailscale IP) on your phone.
 
 ```bash
-pair claude              # any agent
-pair pi myproject        # named session
-pair "pi --model gpt"    # agent with arguments (quote it)
+pair pi                  # coding agent
+pair nvim myproject      # named session
+pair htop                # any TUI
+pair "pi --model gpt"    # command with arguments (quote it)
 pair server &            # start server explicitly in background
 pair browse              # list sessions and pick one to attach to
 pair browse myproject    # attach to a named session directly
 ```
 
-Sessions are locked down — no `C-b` prefix, no splits, no status bar.
-When the agent exits, the session is fully cleaned up and you return
+When the command exits, the session is fully cleaned up and you return
 to your shell or tmux pane.
 
 ## Under the hood
